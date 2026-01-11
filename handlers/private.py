@@ -63,7 +63,7 @@ async def cmd_start(message: types.Message):
             text += f"{channel['name']} 状态: left\n"
         
         sent_msg = await message.answer(text, reply_markup=get_subscription_keyboard(not_joined), parse_mode="Markdown", disable_web_page_preview=True)
-        asyncio.create_task(delete_later(sent_msg, 120))
+        await delete_later(sent_msg, 120)
         return
 
     name_link = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
@@ -90,8 +90,8 @@ async def cmd_start(message: types.Message):
     kb = get_resource_grid_keyboard(page=1)
     sent_msg = await message.answer(success_text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     
-    asyncio.create_task(delete_later(sent_msg, 120))
-    asyncio.create_task(delete_later(message, 120))
+    await delete_later(sent_msg, 120)
+    await delete_later(message, 120)
 
 # --- 多页切换 ---
 @dp.callback_query_handler(text="welcome_page_1")
@@ -114,6 +114,7 @@ async def welcome_pagination_handler(call: types.CallbackQuery):
         )
     
     try:
+        await reset_message_timer(call.message)
         await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     except:
         pass
@@ -213,6 +214,7 @@ async def back_to_start_handler(call: types.CallbackQuery):
         "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
     )
     
+    await reset_message_timer(call.message)
     await call.message.edit_text(success_text, parse_mode="Markdown", reply_markup=get_resource_grid_keyboard(1), disable_web_page_preview=True)
     await call.answer()
 

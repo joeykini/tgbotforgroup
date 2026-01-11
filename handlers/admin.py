@@ -69,8 +69,8 @@ def get_channels_keyboard():
 @dp.message_handler(commands=['settings'], user_id=DefaultConfig.ADMIN_ID)
 async def cmd_settings(message: types.Message):
     msg = await message.reply("🛠 **系统设置后台**", reply_markup=get_settings_keyboard())
-    asyncio.create_task(delete_later(msg, 120))
-    asyncio.create_task(delete_later(message, 120))
+    await delete_later(msg, 120)
+    await delete_later(message, 120)
 
 @dp.callback_query_handler(text_startswith="admin_", user_id=DefaultConfig.ADMIN_ID, state="*")
 async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None):
@@ -437,18 +437,46 @@ async def add_res_step1(message: types.Message, state: FSMContext):
 @dp.message_handler(state=AdminStates.WAITING_FOR_RES_URL, user_id=DefaultConfig.ADMIN_ID)
 async def add_res_step2(message: types.Message, state: FSMContext):
     await state.update_data(res_url=message.text)
-    await message.reply("请输入价格 (例如: 10, 代表10z/10张，纯数字):")
-    await AdminStates.WAITING_FOR_RES_PRICE.set()
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(InlineKeyboardButton("🧚 颜值服务", callback_data="res_type_颜值服务"),
+           InlineKeyboardButton("👩‍🍳 服务颜值", callback_data="res_type_服务颜值"),
+           InlineKeyboardButton("🤸 服务好", callback_data="res_type_服务好"),
+           InlineKeyboardButton("🧜 颜值高", callback_data="res_type_颜值高"))
+    await message.reply("请选择服务类型：", reply_markup=kb)
+    await AdminStates.WAITING_FOR_RES_TYPE.set()
 
-@dp.message_handler(state=AdminStates.WAITING_FOR_RES_PRICE, user_id=DefaultConfig.ADMIN_ID)
-async def add_res_step3(message: types.Message, state: FSMContext):
-    price = int(message.text) if message.text.isdigit() else 0
-    await state.update_data(res_price=price)
-    await message.reply("请输入所属区域 (例如: 淮安/清江浦):")
+@dp.callback_query_handler(state=AdminStates.WAITING_FOR_RES_TYPE, text_startswith="res_type_", user_id=DefaultConfig.ADMIN_ID)
+async def add_res_step3(call: types.CallbackQuery, state: FSMContext):
+    res_type = call.data.split("_")[-1]
+    await state.update_data(res_type=res_type)
+    
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(InlineKeyboardButton("💸 5z-8z", callback_data="tag_price_5-8"),
+           InlineKeyboardButton("💸 9z-12z", callback_data="tag_price_9-12"),
+           InlineKeyboardButton("💸 13z-16z", callback_data="tag_price_13-16"),
+           InlineKeyboardButton("💸 17z+", callback_data="tag_price_17+"))
+    await call.message.edit_text("请选择价格标签选项：", reply_markup=kb)
+    await AdminStates.WAITING_FOR_RES_PRICE.set()
+    await call.answer()
+
+@dp.callback_query_handler(state=AdminStates.WAITING_FOR_RES_PRICE, text_startswith="tag_price_", user_id=DefaultConfig.ADMIN_ID)
+async def add_res_step4(call: types.CallbackQuery, state: FSMContext):
+    price_tag = call.data.split("_")[-1]
+    # 将标签存入 tags (JSON list)
+    await state.update_data(res_tags=[f"price_{price_tag}"])
+    # 提取数字作为主价格 (可选，这里取下限)
+    try:
+        main_price = int(price_tag.split('-')[0].replace('+', ''))
+    except:
+        main_price = 0
+    await state.update_data(res_price=main_price)
+
+    await call.message.answer("请输入所属区域 (例如: 淮安/清江浦):")
     await AdminStates.WAITING_FOR_RES_REGION.set()
+    await call.answer()
 
 @dp.message_handler(state=AdminStates.WAITING_FOR_RES_REGION, user_id=DefaultConfig.ADMIN_ID)
-async def add_res_step4(message: types.Message, state: FSMContext):
+async def add_res_step5(message: types.Message, state: FSMContext):
     await state.update_data(res_region=message.text)
     kb = InlineKeyboardMarkup().add(
         InlineKeyboardButton("第一页 (首屏)", callback_data="res_page_1"),
@@ -465,6 +493,8 @@ async def add_res_final(call: types.CallbackQuery, state: FSMContext):
         url=data['res_url'],
         price=data['res_price'],
         region=data['res_region'],
+        tags=data.get('res_tags', []),
+        res_type=data.get('res_type'),
         status=1,
         page=page
     )

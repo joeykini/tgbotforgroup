@@ -51,17 +51,17 @@ async def welcome_new_member(message: types.Message):
             bot_username = (await bot.get_me()).username
             kb = InlineKeyboardMarkup().add(InlineKeyboardButton("👊 😘立即启动😘 👊", url=f"https://t.me/{bot_username}?start=v"))
             sent_msg = await message.reply(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
-            asyncio.create_task(delete_later(sent_msg, 120))
+            await delete_later(sent_msg, 120)
             
     # 2分钟后删除进群服务消息
-    asyncio.create_task(delete_later(message, 120))
+    await delete_later(message, 120)
 
 
 # 另外处理退群消息
 @dp.message_handler(content_types=types.ContentType.LEFT_CHAT_MEMBER)
 async def goodbye_member(message: types.Message):
     # 2分钟后删除退群消息
-    asyncio.create_task(delete_later(message, 120))
+    await delete_later(message, 120)
 
 
 # 2. 禁言 (Reply模式)
@@ -159,7 +159,7 @@ async def group_keyword_handler(message: types.Message):
     bot_username = (await bot.get_me()).username
     kb = InlineKeyboardMarkup().add(InlineKeyboardButton("👊 😘立即启动😘 👊", url=f"https://t.me/{bot_username}?start=v"))
     sent_msg = await message.reply(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
-    asyncio.create_task(delete_later(sent_msg, 120))
+    await delete_later(sent_msg, 120)
 
 # 5. 用户记录 & 防链接监控
 @dp.message_handler(content_types=types.ContentType.ANY, chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
@@ -194,4 +194,4 @@ async def group_message_logger(message: types.Message):
     if reply_content:
         # 发送回复并5分钟(300秒)后删除
         sent_msg = await message.reply(reply_content)
-        asyncio.create_task(delete_later(sent_msg, 300))
+        await delete_later(sent_msg, 300)

@@ -30,6 +30,7 @@ class AdminStates(StatesGroup):
     # 资源库管理 (抄袭逻辑)
     WAITING_FOR_RES_NAME = State()
     WAITING_FOR_RES_URL = State()
+    WAITING_FOR_RES_TYPE = State()
     WAITING_FOR_RES_PRICE = State()
     WAITING_FOR_RES_REGION = State()
     

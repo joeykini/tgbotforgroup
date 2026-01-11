@@ -7,13 +7,50 @@ from config import DefaultConfig
 
 # ================= 辅助函数 =================
 
-async def delete_later(message: types.Message, delay: int):
-    """延迟删除消息"""
-    await asyncio.sleep(delay)
-    try:
-        await message.delete()
-    except:
-        pass
+# ================= 消息计时管理 =================
+
+class MessageTimerManager:
+    def __init__(self):
+        self.timers = {} # {(chat_id, message_id): asyncio.Task}
+
+    async def start_timer(self, message: types.Message, delay: int = 120):
+        key = (message.chat.id, message.message_id)
+        # 如果已经有计时器在运行，先取消它
+        self.cancel_timer(message.chat.id, message.message_id)
+        
+        task = asyncio.create_task(self._delete_task(message, delay))
+        self.timers[key] = task
+
+    def cancel_timer(self, chat_id: int, message_id: int):
+        key = (chat_id, message_id)
+        if key in self.timers:
+            self.timers[key].cancel()
+            del self.timers[key]
+
+    async def _delete_task(self, message: types.Message, delay: int):
+        try:
+            await asyncio.sleep(delay)
+            await message.delete()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        finally:
+            key = (message.chat.id, message.message_id)
+            if self.timers.get(key) == asyncio.current_task():
+                self.timers.pop(key, None)
+
+timer_manager = MessageTimerManager()
+
+async def delete_later(message: types.Message, delay: int = 120):
+    """延迟删除消息，并记录到计时管理器"""
+    if not message: return
+    await timer_manager.start_timer(message, delay)
+
+async def reset_message_timer(message: types.Message, delay: int = 120):
+    """重置消息的删除计时"""
+    if not message: return
+    await timer_manager.start_timer(message, delay)
 
 def is_admin(user_id):
     return user_id == DefaultConfig.ADMIN_ID
