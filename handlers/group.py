@@ -177,6 +177,9 @@ async def group_message_logger(message: types.Message):
     if await check_group_admin(message): return
     
     # 简单检测 http/https/t.me
+    if not message.text:
+        return
+        
     text = message.text.lower()
     if 'http://' in text or 'https://' in text or 't.me/' in text:
         try:
@@ -190,8 +193,9 @@ async def group_message_logger(message: types.Message):
             return
 
     # 关键词回复检测 (只有主要没有违规链接才检测)
-    reply_content = db.get_keyword_reply(message.text)
-    if reply_content:
-        # 发送回复并5分钟(300秒)后删除
-        sent_msg = await message.reply(reply_content)
-        await delete_later(sent_msg, 300)
+    if message.text:
+        reply_content = db.get_keyword_reply(message.text)
+        if reply_content:
+            # 发送回复并5分钟(300秒)后删除
+            sent_msg = await message.reply(reply_content)
+            await delete_later(sent_msg, 300)

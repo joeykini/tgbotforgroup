@@ -61,7 +61,25 @@ def get_resource_grid_keyboard(page=1):
     
     return kb
 
-# ================= 私聊/菜单逻辑 =================
+def get_welcome_text(user_full_name, user_id):
+    name_link = f"[{user_full_name}](tg://user?id={user_id})"
+    link_group = db.get_setting("LINK_GROUP", DefaultConfig.LINK_GROUP) or DefaultConfig.LINK_GROUP
+    link_service = db.get_setting("LINK_SERVICE", DefaultConfig.LINK_SERVICE) or DefaultConfig.LINK_SERVICE
+    link_rules = db.get_setting("LINK_RULES", DefaultConfig.LINK_RULES) or DefaultConfig.LINK_RULES
+    link_newbie = "https://t.me/huaianbendi/6" 
+
+    return (
+        "欢迎使用麻辣鹅系统\n"
+        f"    {name_link} ，鹅友，您好!\n"
+        f"🤗欢迎来到[麻辣鹅圈子]({link_group})，立即开始你的麻辣探索之旅吧；\n"
+        f"    小鹅均为已验证资源!对眼有感即可冲，放心\"旅途\"，勿需多虑!\n"
+        f"[旅前须知]:联系方式无条件获取，及时验证，请勿鸽人，素质诚信出击;[联系鹅神]({link_service})。\n"
+        f"[温馨提示]:切勿相信任何非管理私聊，如有请避免踩雷[踩雷反馈]({link_service})\n"
+        "雅俗共赏:行九浅而一深，待十侯而方毕\n"
+        "小鹅状态: ❤️可约     😈 月休\n"
+        f"安全须知1、[新人说明]({link_newbie}) 2、[群规及操作]({link_rules})\n\n"
+        "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
+    )
 
 @dp.message_handler(commands=['start'], chat_type=types.ChatType.PRIVATE)
 async def cmd_start(message: types.Message):
@@ -85,27 +103,7 @@ async def cmd_start(message: types.Message):
         await delete_later(sent_msg, 120)
         return
 
-    name_link = f"[{message.from_user.full_name}](tg://user?id={message.from_user.id})"
-    
-    # 链接配置
-    link_service = db.get_setting("LINK_SERVICE", DefaultConfig.LINK_SERVICE) or DefaultConfig.LINK_SERVICE
-    link_rules = db.get_setting("LINK_RULES", DefaultConfig.LINK_RULES) or DefaultConfig.LINK_RULES
-    link_group = db.get_setting("LINK_GROUP", DefaultConfig.LINK_GROUP) or DefaultConfig.LINK_GROUP
-    link_newbie = "https://t.me/huaianbendi/6" 
-
-    success_text = (
-        "欢迎使用麻辣鹅系统\n"
-        f"    {name_link} ，鹅友，您好!\n"
-        f"🤗欢迎来到[麻辣鹅圈子]({link_group})，立即开始你的麻辣探索之旅吧；\n"
-        f"    小鹅均为已验证资源!对眼有感即可冲，放心\"旅途\"，勿需多虑!\n"
-        f"[旅前须知]:联系方式无条件获取，及时验证，请勿鸽人，素质诚信出击;[联系鹅神]({link_service})。\n"
-        f"[温馨提示]:切勿相信任何非管理私聊，如有请避免踩雷[踩雷反馈]({link_service})\n"
-        "雅俗共赏:行九浅而一深，待十侯而方毕\n"
-        "小鹅状态: ❤️可约     😈 月休\n"
-        f"安全须知1、[新人说明]({link_newbie}) 2、[群规及操作]({link_rules})\n\n"
-        "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
-    )
-    
+    success_text = get_welcome_text(message.from_user.full_name, message.from_user.id)
     kb = get_resource_grid_keyboard(page=1)
     sent_msg = await message.answer(success_text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     
@@ -118,29 +116,20 @@ async def cmd_start(message: types.Message):
 @dp.callback_query_handler(text="welcome_page_3", state="*")
 async def welcome_pagination_handler(call: types.CallbackQuery, state: FSMContext = None):
     if state: await state.finish()
-    page = int(call.data.split("_")[-1])
-    kb = get_resource_grid_keyboard(page=page)
-    # 处理文字
-    if page == 2:
-        text = "蓝精灵「精灵区域」\n(区域页展示，按状态分组显示)"
-    elif page == 3:
-        text = "蓝精灵「广告/额外」\n(第三页内容展示)"
-    else:
-        # 重用之前的欢迎语逻辑
-        name_link = f"[{call.from_user.full_name}](tg://user?id={call.from_user.id})"
-        link_group = db.get_setting("LINK_GROUP", DefaultConfig.LINK_GROUP) or DefaultConfig.LINK_GROUP
-        text = (
-            "欢迎使用麻辣鹅系统\n"
-            f"    {name_link} ，鹅友，您好!\n"
-            f"🤗欢迎来到[麻辣鹅圈子]({link_group})，立即开始你的麻辣探索之旅吧；\n"
-            "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
-        )
-    
     try:
+        page = int(call.data.split("_")[-1])
+        kb = get_resource_grid_keyboard(page=page)
+        
+        text = get_welcome_text(call.from_user.full_name, call.from_user.id)
+        # 在文本上方加一个小提示，说明当前在第几页
+        page_names = ["首页", "区域", "广告"]
+        text = f"📍 当前位置：{page_names[page-1]}\n\n" + text
+        
         await reset_message_timer(call.message)
         await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
-    except:
-        pass
+    except Exception as e:
+        print(f"Pagination error: {e}")
+        await call.answer("❌ 页面切换失败", show_alert=True)
     await call.answer()
 
 # --- 个人中心 (Butterfly: 我的蓝精灵) ---
