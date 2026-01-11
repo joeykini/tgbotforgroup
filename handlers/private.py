@@ -10,29 +10,34 @@ from utils import delete_later, check_subscription, get_subscription_keyboard
 
 # ================= 辅助函数：构造 3 列资源网格 =================
 
-def get_resource_grid_keyboard(offset=0):
+def get_resource_grid_keyboard(page=1):
     kb = InlineKeyboardMarkup(row_width=3)
     
-    # 1. 获取资源列表 (取12条)
-    resources = db.get_resources(limit=12, offset=offset)
+    # 1. 获取对应页面的自定义按钮 (5个或7个)
+    buttons = db.get_buttons(page=page)
     
     # 2. 构造 3 列网格
     row = []
-    for r in resources:
-        icon = "❤️" if r['status'] == 1 else "😈"
-        btn_text = f"{icon} {r['name']}"
-        row.append(InlineKeyboardButton(btn_text, url=r['url']))
+    for b in buttons:
+        btn_text = b['text']
+        # 这里可以尝试匹配资源库里的状态图标 (可选，增强体验)
+        row.append(InlineKeyboardButton(btn_text, url=b['url']))
         if len(row) == 3:
             kb.row(*row)
             row = []
-    if row: # 最后一排不满 3 个也加上
+    if row:
         kb.row(*row)
     
-    # 3. 底部导航栏 (模仿蓝精灵)
-    kb.row(
-        InlineKeyboardButton("🦋 我的蓝精灵", callback_data="my_stats"),
-        InlineKeyboardButton("🐕 区域、属性", callback_data="attr_filter")
-    )
+    # 3. 底部导航栏
+    if page == 1:
+        kb.row(
+            InlineKeyboardButton("🦋 我的蓝精灵", callback_data="my_home_stats"), # 改个名避开冲突
+            InlineKeyboardButton("🐕 区域、属性", callback_data="welcome_page_2")
+        )
+    else:
+        kb.row(
+            InlineKeyboardButton("⬅️ 返回主页", callback_data="welcome_page_1")
+        )
     
     return kb
 
@@ -81,14 +86,40 @@ async def cmd_start(message: types.Message):
         "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
     )
     
-    kb = get_resource_grid_keyboard(offset=0)
+    kb = get_resource_grid_keyboard(page=1)
     sent_msg = await message.answer(success_text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     
     asyncio.create_task(delete_later(sent_msg, 120))
     asyncio.create_task(delete_later(message, 120))
 
+# --- 多页切换 ---
+@dp.callback_query_handler(text="welcome_page_1")
+@dp.callback_query_handler(text="welcome_page_2")
+async def welcome_pagination_handler(call: types.CallbackQuery):
+    page = int(call.data.split("_")[-1])
+    kb = get_resource_grid_keyboard(page=page)
+    # 处理文字，Page 2 可以显示筛选说明等
+    if page == 2:
+        text = "蓝精灵「精灵属性」\n区域页按钮配置"
+    else:
+        # 重用之前的欢迎语逻辑
+        name_link = f"[{call.from_user.full_name}](tg://user?id={call.from_user.id})"
+        link_group = db.get_setting("LINK_GROUP", DefaultConfig.LINK_GROUP) or DefaultConfig.LINK_GROUP
+        text = (
+            "欢迎使用麻辣鹅系统\n"
+            f"    {name_link} ，鹅友，您好!\n"
+            f"🤗欢迎来到[麻辣鹅圈子]({link_group})，立即开始你的麻辣探索之旅吧；\n"
+            "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
+        )
+    
+    try:
+        await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
+    except:
+        pass
+    await call.answer()
+
 # --- 个人中心 (Butterfly: 我的蓝精灵) ---
-@dp.callback_query_handler(text="my_stats")
+@dp.callback_query_handler(text="my_home_stats")
 async def my_stats_handler(call: types.CallbackQuery):
     stats = db.get_user_stats(call.from_user.id)
     if not stats: 
@@ -115,12 +146,12 @@ async def my_stats_handler(call: types.CallbackQuery):
            InlineKeyboardButton("📚 我的报告", callback_data="my_reports"))
     kb.add(InlineKeyboardButton("🗣 探索情况", callback_data="explore_status"),
            InlineKeyboardButton("🎁 福利列表", callback_data="welfare_list"))
-    kb.add(InlineKeyboardButton("⬅️ 返 回", callback_data="back_to_start"))
+    kb.add(InlineKeyboardButton("⬅️ 返 回", callback_data="welcome_page_1"))
     
     await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
     await call.answer()
 
-# --- 区域、属性 (Dog: 区域、属性) ---
+# --- 区域页原逻辑 (保留用于 attr_filter 按钮如果将来要用) ---
 @dp.callback_query_handler(text="attr_filter")
 async def attr_filter_handler(call: types.CallbackQuery):
     text = (
@@ -150,7 +181,7 @@ async def attr_filter_handler(call: types.CallbackQuery):
            InlineKeyboardButton("💸 17z+", callback_data="price_4"))
            
     kb.row(InlineKeyboardButton("🌏 精灵区域", callback_data="region_list"),
-           InlineKeyboardButton("⬅️ 返 回", callback_data="back_to_start"))
+           InlineKeyboardButton("⬅️ 返 回", callback_data="welcome_page_1"))
     
     await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
     await call.answer()
@@ -181,7 +212,7 @@ async def back_to_start_handler(call: types.CallbackQuery):
         "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
     )
     
-    await call.message.edit_text(success_text, parse_mode="Markdown", reply_markup=get_resource_grid_keyboard(0), disable_web_page_preview=True)
+    await call.message.edit_text(success_text, parse_mode="Markdown", reply_markup=get_resource_grid_keyboard(1), disable_web_page_preview=True)
     await call.answer()
 
 @dp.callback_query_handler(text="check_sub")

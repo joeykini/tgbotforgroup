@@ -15,17 +15,39 @@ from utils import delete_later, is_admin
 # ================= 辅助键盘 =================
 
 def get_settings_keyboard():
-    keyboard = InlineKeyboardMarkup(row_width=1)
-    keyboard.add(InlineKeyboardButton("📢 强制关注频道管理", callback_data="admin_channels"))
-    keyboard.add(InlineKeyboardButton("⚙️ 功能开关设置", callback_data="admin_switches"))
-    keyboard.add(InlineKeyboardButton("🔗 链接配置", callback_data="admin_links"))
-    keyboard.add(InlineKeyboardButton("👤 联系人配置", callback_data="admin_contact"))
-    keyboard.add(InlineKeyboardButton("🔘 欢迎语按钮管理 (多页)", callback_data="admin_buttons"))
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    # 第一排：核心开关与频道
+    keyboard.row(
+        InlineKeyboardButton("⚙️ 开关设置", callback_data="admin_switches"),
+        InlineKeyboardButton("📢 关注管理", callback_data="admin_channels")
+    )
+    
+    # 第二排：界面与导航
+    keyboard.row(
+        InlineKeyboardButton("🚀 /start 菜单", callback_data="admin_start_menu"),
+        InlineKeyboardButton("🔘 欢迎语按钮", callback_data="admin_buttons")
+    )
+    
+    # 第三排：资源库 (小精灵)
     keyboard.add(InlineKeyboardButton("🏷 资源库管理 (小精灵)", callback_data="admin_resources"))
-    keyboard.add(InlineKeyboardButton("🚀 /start 菜单配置", callback_data="admin_start_menu"))
-    keyboard.add(InlineKeyboardButton("🕒 定时广告配置", callback_data="admin_ad"))
+
+    # 第四排：核心链接与联系人
+    keyboard.row(
+        InlineKeyboardButton("🔗 链接配置", callback_data="admin_links"),
+        InlineKeyboardButton("👤 联系人配置", callback_data="admin_contact")
+    )
+    
+    # 第五排：功能管理
+    keyboard.row(
+        InlineKeyboardButton("🕒 定时广告", callback_data="admin_ad"),
+        InlineKeyboardButton("💬 关键词", callback_data="admin_keywords")
+    )
+    
+    # 第六排：报告
     keyboard.add(InlineKeyboardButton("📝 报告频道配置", callback_data="admin_report"))
-    keyboard.add(InlineKeyboardButton("💬 关键词回复", callback_data="admin_keywords"))
+    
+    # 底部
     keyboard.add(InlineKeyboardButton("❌ 关闭菜单", callback_data="admin_close"))
     return keyboard
 
