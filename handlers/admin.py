@@ -140,23 +140,24 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
         ).add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     elif action == "resources":
-        res_list = db.get_resources(limit=200) # 调大限制
-        p1 = [r for r in res_list if r['page'] == 1]
-        p2 = [r for r in res_list if r['page'] == 2]
+        res_list = db.get_resources(limit=300) 
         text = (
             "🔘 **格栅按钮/资源管理**\n\n"
-            f"📄 第一页 (首屏): {len(p1)} 个\n"
-            f"📍 第二页 (区域): {len(p2)} 个\n\n"
-            "管理逻辑：点击资源可切换【❤️/😈】，删除请点击🗑。"
+            "管理逻辑：点击资源可切换【❤️/😈】，删除请点击🗑。\n"
+            "⚠️ 每个页面建议不超过 15-20 个资源。"
         )
         kb = InlineKeyboardMarkup(row_width=2)
         kb.add(InlineKeyboardButton("➕ 添加新按钮/资源", callback_data="add_res_start"))
         
-        for page_num, items in [(1, p1), (2, p2)]:
-            if not items: continue
-            kb.row(InlineKeyboardButton(f"--- 第{'一' if page_num==1 else '二'}页 ---", callback_data="none"))
+        for p_idx in range(1, 4):
+            items = [r for r in res_list if r['page'] == p_idx]
+            page_name = ["首屏", "区域", "广告/额外"][p_idx-1]
+            kb.row(InlineKeyboardButton(f"--- 第{p_idx}页 ({page_name}) ---", callback_data="none"))
             
-            # 分状态显示（移除文字分栏，仅分组）
+            if not items:
+                kb.row(InlineKeyboardButton("（该页暂无资源）", callback_data="none"))
+                continue
+
             active = [r for r in items if r['status'] == 1]
             resting = [r for r in items if r['status'] == 0]
             
@@ -503,9 +504,10 @@ async def add_res_step4(call: types.CallbackQuery, state: FSMContext):
 async def add_res_step5(call: types.CallbackQuery, state: FSMContext):
     region = call.data.split("_")[-1]
     await state.update_data(res_region=region)
-    kb = InlineKeyboardMarkup().add(
+    kb = InlineKeyboardMarkup(row_width=2).add(
         InlineKeyboardButton("第一页 (首屏)", callback_data="res_page_1"),
-        InlineKeyboardButton("第二页 (区域页)", callback_data="res_page_2")
+        InlineKeyboardButton("第二页 (区域页)", callback_data="res_page_2"),
+        InlineKeyboardButton("第三页 (广告/额外)", callback_data="res_page_3")
     )
     await call.message.edit_text("请选择该资源存放的页面：", reply_markup=kb)
     # 不再需要 WAITING_FOR_RES_PAGE 状态，因为 add_res_final 已经处理了 res_page_ 开头

@@ -46,11 +46,17 @@ def get_resource_grid_keyboard(page=1):
     if page == 1:
         kb.row(
             InlineKeyboardButton("🦋 我的统计", callback_data="my_home_stats"),
-            InlineKeyboardButton("🐕 区域、属性", callback_data="welcome_page_2")
+            InlineKeyboardButton("🐕 区域页 ❯", callback_data="welcome_page_2")
         )
-    else:
+    elif page == 2:
         kb.row(
-            InlineKeyboardButton("⬅️ 返回主页", callback_data="welcome_page_1")
+            InlineKeyboardButton("❮ 首屏", callback_data="welcome_page_1"),
+            InlineKeyboardButton("🌸 广告页 ❯", callback_data="welcome_page_3")
+        )
+    else: # page 3
+        kb.row(
+            InlineKeyboardButton("❮ 区域页", callback_data="welcome_page_2"),
+            InlineKeyboardButton("🏠 返回首页", callback_data="welcome_page_1")
         )
     
     return kb
@@ -109,13 +115,16 @@ async def cmd_start(message: types.Message):
 # --- 多页切换 ---
 @dp.callback_query_handler(text="welcome_page_1", state="*")
 @dp.callback_query_handler(text="welcome_page_2", state="*")
+@dp.callback_query_handler(text="welcome_page_3", state="*")
 async def welcome_pagination_handler(call: types.CallbackQuery, state: FSMContext = None):
     if state: await state.finish()
     page = int(call.data.split("_")[-1])
     kb = get_resource_grid_keyboard(page=page)
-    # 处理文字，Page 2 可以显示筛选说明等
+    # 处理文字
     if page == 2:
-        text = "蓝精灵「精灵属性」\n区域页按钮配置"
+        text = "蓝精灵「精灵区域」\n(区域页展示，按状态分组显示)"
+    elif page == 3:
+        text = "蓝精灵「广告/额外」\n(第三页内容展示)"
     else:
         # 重用之前的欢迎语逻辑
         name_link = f"[{call.from_user.full_name}](tg://user?id={call.from_user.id})"
