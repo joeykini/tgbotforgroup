@@ -13,15 +13,16 @@ from utils import delete_later, check_subscription, get_subscription_keyboard
 def get_resource_grid_keyboard(page=1):
     kb = InlineKeyboardMarkup(row_width=3)
     
-    # 1. 获取对应页面的自定义按钮 (5个或7个)
-    buttons = db.get_buttons(page=page)
+    # 统一从 resources 表获取数据
+    items = db.get_resources(page=page)
     
-    # 2. 构造 3 列网格
+    # 构造 3 列网格
     row = []
-    for b in buttons:
-        btn_text = b['text']
-        # 这里可以尝试匹配资源库里的状态图标 (可选，增强体验)
-        row.append(InlineKeyboardButton(btn_text, url=b['url']))
+    for item in items:
+        icon = "❤️" if item.get('status') == 1 else "😈"
+        kb_text = f"{icon}{item['name']}"
+        kb_url = item['url']
+        row.append(InlineKeyboardButton(kb_text, url=kb_url))
         if len(row) == 3:
             kb.row(*row)
             row = []
@@ -31,7 +32,7 @@ def get_resource_grid_keyboard(page=1):
     # 3. 底部导航栏
     if page == 1:
         kb.row(
-            InlineKeyboardButton("🦋 我的蓝精灵", callback_data="my_home_stats"), # 改个名避开冲突
+            InlineKeyboardButton("🦋 我的统计", callback_data="my_home_stats"),
             InlineKeyboardButton("🐕 区域、属性", callback_data="welcome_page_2")
         )
     else:
@@ -214,6 +215,8 @@ async def back_to_start_handler(call: types.CallbackQuery):
     
     await call.message.edit_text(success_text, parse_mode="Markdown", reply_markup=get_resource_grid_keyboard(1), disable_web_page_preview=True)
     await call.answer()
+
+# (Deleted obsolete start_item handler)
 
 @dp.callback_query_handler(text="check_sub")
 async def check_sub_handler(call: types.CallbackQuery):

@@ -23,14 +23,8 @@ def get_settings_keyboard():
         InlineKeyboardButton("📢 关注管理", callback_data="admin_channels")
     )
     
-    # 第二排：界面与导航
-    keyboard.row(
-        InlineKeyboardButton("🚀 /start 菜单", callback_data="admin_start_menu"),
-        InlineKeyboardButton("🔘 欢迎语按钮", callback_data="admin_buttons")
-    )
-    
-    # 第三排：资源库 (小精灵)
-    keyboard.add(InlineKeyboardButton("🏷 资源库管理 (小精灵)", callback_data="admin_resources"))
+    # 第二排：核心内容 (格栅按钮)
+    keyboard.add(InlineKeyboardButton("🔘 欢迎页-格栅按钮管理", callback_data="admin_resources"))
 
     # 第四排：核心链接与联系人
     keyboard.row(
@@ -38,7 +32,7 @@ def get_settings_keyboard():
         InlineKeyboardButton("👤 联系人配置", callback_data="admin_contact")
     )
     
-    # 第五排：功能管理
+    # 第四排：互动管理
     keyboard.row(
         InlineKeyboardButton("🕒 定时广告", callback_data="admin_ad"),
         InlineKeyboardButton("💬 关键词", callback_data="admin_keywords")
@@ -129,28 +123,6 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
             kb.add(InlineKeyboardButton(f"{display_name}", callback_data=f"view_ad_{ad['id']}"))
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
-    elif action == "report":
-        current = db.get_setting("REPORT_CHANNEL", "未配置")
-        text = f"📝 **报告频道配置**\n当前频道ID: `{current}`\n\n请点击下方按钮修改："
-        kb = InlineKeyboardMarkup().add(
-            InlineKeyboardButton("修改频道ID", callback_data="edit_report_channel")
-        ).add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
-        await call.message.edit_text(text, reply_markup=kb)
-    elif action == "buttons":
-        p1 = db.get_buttons(page=1)
-        p2 = db.get_buttons(page=2)
-        text = (
-            "🔘 **欢迎语按钮管理**\n\n"
-            f"📄 **第一页 (5个建议)**: {len(p1)}个\n"
-            f"📍 **第二页 (区域/7个建议)**: {len(p2)}个\n\n"
-            "点击下方按钮查看/删除，或点击添加。"
-        )
-        kb = InlineKeyboardMarkup(row_width=2)
-        kb.add(InlineKeyboardButton("第一页管理", callback_data="manage_buttons_1"),
-               InlineKeyboardButton("第二页管理", callback_data="manage_buttons_2"))
-        kb.add(InlineKeyboardButton("➕ 添加新按钮", callback_data="add_btn"))
-        kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
-        await call.message.edit_text(text, reply_markup=kb)
     elif action == "keywords":
         keywords = db.get_all_keywords()
         text = f"💬 **关键词回复配置**\n当前关键词数: {len(keywords)}\n\n点击下方按钮可以删除，或添加新关键词。"
@@ -160,117 +132,45 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
             kb.add(InlineKeyboardButton(f"🗑 删除: {kw['keyword']}", callback_data=f"del_kw_{kw['id']}"))
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
-    elif action == "resources":
-        res_list = db.get_resources(limit=50)
-        text = f"🏷 **资源库管理 (小精灵)**\n当前已录入: {len(res_list)} 个\n\n点击下方按钮可以【切换状态】或【删除】。"
-        kb = InlineKeyboardMarkup(row_width=1)
-        kb.add(InlineKeyboardButton("➕ 添加新资源", callback_data="add_res_start"))
-        for r in res_list:
-            status_icon = "❤️" if r['status'] == 1 else "😈"
-            kb.add(InlineKeyboardButton(f"{status_icon} {r['name']} | 切换状态", callback_data=f"toggle_res_{r['id']}"))
-            kb.add(InlineKeyboardButton(f"🗑 删除: {r['name']}", callback_data=f"del_res_{r['id']}"))
-        kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
+    elif action == "report":
+        current = db.get_setting("REPORT_CHANNEL", "未配置")
+        text = f"📝 **报告频道配置**\n当前频道ID: `{current}`\n\n请点击下方按钮修改："
+        kb = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("修改频道ID", callback_data="edit_report_channel")
+        ).add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
-    elif action == "start":
-        items = db.get_start_menu_items()
-        text = f"🚀 **Start 菜单配置**\n当前菜单项数: {len(items)}\n\n点击下方按钮可以删除，或添加新菜单项。"
-        kb = InlineKeyboardMarkup(row_width=1)
-        kb.add(InlineKeyboardButton("➕ 添加新菜单项", callback_data="add_start_item"))
-        for item in items:
-            atype = item.get('type', 'reply')
-            type_icon = "🔗" if atype == 'link' else ("🖼" if item.get('media') else "📝")
-            kb.add(InlineKeyboardButton(f"🗑 {type_icon} {item['text']}", callback_data=f"del_start_item_{item['id']}"))
+    elif action == "resources":
+        res_list = db.get_resources(limit=100)
+        p1 = [r for r in res_list if r['page'] == 1]
+        p2 = [r for r in res_list if r['page'] == 2]
+        text = (
+            "🔘 **格栅按钮/资源管理**\n\n"
+            f"📄 第一页 (首屏): {len(p1)} 个\n"
+            f"📍 第二页 (区域): {len(p2)} 个\n\n"
+            "管理逻辑：点击下方资源可【切换❤️/😈状态】，或点击删除。"
+        )
+        kb = InlineKeyboardMarkup(row_width=2)
+        kb.add(InlineKeyboardButton("➕ 添加新按钮/资源", callback_data="add_res_start"))
+        
+        # 分页显示
+        kb.row(InlineKeyboardButton("--- 第一页项 ---", callback_data="none"))
+        for r in p1:
+            icon = "❤️" if r['status'] == 1 else "😈"
+            kb.add(InlineKeyboardButton(f"{icon}{r['name']}", callback_data=f"toggle_res_{r['id']}"),
+                   InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
+        
+        kb.row(InlineKeyboardButton("--- 第二页项 ---", callback_data="none"))
+        for r in p2:
+            icon = "❤️" if r['status'] == 1 else "😈"
+            kb.add(InlineKeyboardButton(f"{icon}{r['name']}", callback_data=f"toggle_res_{r['id']}"),
+                   InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
+                   
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     
     await call.answer()
 
-# --- 按钮详情管理 (分页查看) ---
-@dp.callback_query_handler(text_startswith="manage_buttons_", user_id=DefaultConfig.ADMIN_ID)
-async def manage_buttons_page(call: types.CallbackQuery):
-    page = int(call.data.split("_")[-1])
-    buttons = db.get_buttons(page=page)
-    text = f"🔘 **第 {page} 页按钮列表**\n点击按钮即可删除："
-    kb = InlineKeyboardMarkup(row_width=1)
-    for btn in buttons:
-        kb.add(InlineKeyboardButton(f"🗑 {btn['text']} -> {btn['url']}", callback_data=f"del_btn_{btn['id']}"))
-    kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_buttons"))
-    await call.message.edit_text(text, reply_markup=kb)
-
-# --- 关键词回复逻辑 ---
-@dp.callback_query_handler(text="add_keyword", user_id=DefaultConfig.ADMIN_ID)
-async def add_keyword_start(call: types.CallbackQuery):
-    await call.message.answer("请输入要触发的 **关键词**：")
-    await AdminStates.WAITING_FOR_KEYWORD_KEY.set()
-    await call.answer()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_KEYWORD_KEY, user_id=DefaultConfig.ADMIN_ID)
-async def add_keyword_key(message: types.Message, state: FSMContext):
-    await state.update_data(kw_key=message.text)
-    await message.reply("请输入该关键词对应的 **回复内容**：")
-    await AdminStates.WAITING_FOR_KEYWORD_REPLY.set()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_KEYWORD_REPLY, user_id=DefaultConfig.ADMIN_ID)
-async def add_keyword_reply_content(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    keyword = data.get("kw_key")
-    reply = message.text
-    db.add_keyword_reply(keyword, reply)
-    await message.reply(f"✅ 关键词规则已添加！")
-    await state.finish()
-
-@dp.callback_query_handler(text_startswith="del_kw_", user_id=DefaultConfig.ADMIN_ID)
-async def del_keyword_handler(call: types.CallbackQuery):
-    kw_id = int(call.data.split("_")[-1])
-    db.delete_keyword_reply(kw_id)
-    await call.answer("关键词已删除")
-    call.data = "admin_keywords"
-    await admin_menu_handler(call, None)
-
-# --- 多页按钮逻辑 ---
-@dp.callback_query_handler(text="add_btn", user_id=DefaultConfig.ADMIN_ID)
-async def add_btn_start(call: types.CallbackQuery):
-    await call.message.answer("请输入按钮显示的文字：")
-    await AdminStates.WAITING_FOR_BUTTON_TEXT.set()
-    await call.answer()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_BUTTON_TEXT, user_id=DefaultConfig.ADMIN_ID)
-async def add_btn_text(message: types.Message, state: FSMContext):
-    await state.update_data(btn_text=message.text)
-    await message.answer("请输入按钮跳转的链接 (必须以 http 或 https 开头)：")
-    await AdminStates.WAITING_FOR_BUTTON_URL.set()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_BUTTON_URL, user_id=DefaultConfig.ADMIN_ID)
-async def add_btn_url(message: types.Message, state: FSMContext):
-    url = message.text
-    if not url.startswith("http"):
-        await message.answer("❌ 链接格式错误！请重新输入：")
-        return
-    await state.update_data(btn_url=url)
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("第一页 (首屏)", callback_data="page_1"),
-        InlineKeyboardButton("第二页 (区域页)", callback_data="page_2")
-    )
-    await message.answer("请选择该按钮存放的页面：", reply_markup=kb)
-    await AdminStates.WAITING_FOR_BUTTON_PAGE.set()
-
-@dp.callback_query_handler(state=AdminStates.WAITING_FOR_BUTTON_PAGE, user_id=DefaultConfig.ADMIN_ID)
-async def add_btn_save(call: types.CallbackQuery, state: FSMContext):
-    page = int(call.data.split("_")[1])
-    data = await state.get_data()
-    db.add_button(data['btn_text'], data['btn_url'], page=page)
-    await call.message.answer(f"✅ 已成功添加到第 {page} 页")
-    await state.finish()
-    await call.answer()
-
-@dp.callback_query_handler(text_startswith="del_btn_", user_id=DefaultConfig.ADMIN_ID)
-async def del_btn_handler(call: types.CallbackQuery):
-    btn_id = int(call.data.split("_")[2])
-    db.delete_button(btn_id)
-    await call.answer("✅ 按钮已删除")
-    # 模拟返回列表页 (返回之前管理的页面)
-    call.data = "admin_buttons"
-    await admin_menu_handler(call, None)
+# (Deleted obsolete button handlers)
 
 # --- 链接配置逻辑 ---
 @dp.callback_query_handler(text_startswith="edit_link_", user_id=DefaultConfig.ADMIN_ID)
@@ -310,6 +210,36 @@ async def save_link_config(message: types.Message, state: FSMContext):
         db.set_setting(key_map[state_name], message.text)
         await message.reply(f"✅ 链接已更新！")
     await state.finish()
+
+# --- 关键词管理 ---
+@dp.callback_query_handler(text="add_keyword", user_id=DefaultConfig.ADMIN_ID)
+async def add_keyword_start(call: types.CallbackQuery):
+    await call.message.answer("请输入要触发的 **关键词**：")
+    await AdminStates.WAITING_FOR_KEYWORD_KEY.set()
+    await call.answer()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_KEYWORD_KEY, user_id=DefaultConfig.ADMIN_ID)
+async def add_keyword_key(message: types.Message, state: FSMContext):
+    await state.update_data(kw_key=message.text)
+    await message.reply("请输入该关键词对应的 **回复内容**：")
+    await AdminStates.WAITING_FOR_KEYWORD_REPLY.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_KEYWORD_REPLY, user_id=DefaultConfig.ADMIN_ID)
+async def add_keyword_reply_content(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    keyword = data.get("kw_key")
+    reply = message.text
+    db.add_keyword_reply(keyword, reply)
+    await message.reply(f"✅ 关键词规则已添加！")
+    await state.finish()
+
+@dp.callback_query_handler(text_startswith="del_kw_", user_id=DefaultConfig.ADMIN_ID)
+async def del_keyword_handler(call: types.CallbackQuery):
+    kw_id = int(call.data.split("_")[-1])
+    db.delete_keyword_reply(kw_id)
+    await call.answer("关键词已删除")
+    call.data = "admin_keywords"
+    await admin_menu_handler(call, None)
 
 # --- 强制关注频道管理 ---
 @dp.callback_query_handler(text="add_channel", user_id=DefaultConfig.ADMIN_ID)
@@ -489,66 +419,7 @@ async def save_report_channel(message: types.Message, state: FSMContext):
     await message.reply("✅ 报告频道已更新")
     await state.finish()
 
-# --- Start 菜单配置 ---
-@dp.callback_query_handler(text="add_start_item", user_id=DefaultConfig.ADMIN_ID)
-async def add_start_item(call: types.CallbackQuery):
-    await call.message.answer("请输入按钮文字:")
-    await AdminStates.WAITING_FOR_START_TEXT.set()
-    await call.answer()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_START_TEXT, user_id=DefaultConfig.ADMIN_ID)
-async def add_start_item_step1(message: types.Message, state: FSMContext):
-    await state.update_data(menu_text=message.text)
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("🔗 链接", callback_data="type_link"),
-        InlineKeyboardButton("💬 回复文字/图片", callback_data="type_reply"),
-        InlineKeyboardButton("📝 举报功能", callback_data="type_report")
-    )
-    await message.reply("请选择该按钮的功能类型:", reply_markup=kb)
-    await AdminStates.WAITING_FOR_START_TYPE.set()
-
-@dp.callback_query_handler(state=AdminStates.WAITING_FOR_START_TYPE, user_id=DefaultConfig.ADMIN_ID)
-async def add_start_item_step2(call: types.CallbackQuery, state: FSMContext):
-    atype = call.data.split('_')[1]
-    await state.update_data(menu_type=atype)
-    if atype == 'report':
-        data = await state.get_data()
-        db.add_start_menu_item(data['menu_text'], 'report')
-        await call.message.answer("✅ 已成功添加举报按钮")
-        await state.finish()
-    elif atype == 'link':
-        await call.message.answer("请输入跳转链接 (URL):")
-        await AdminStates.WAITING_FOR_START_VALUE.set()
-    else:
-        # reply 类型支持文字或图片
-        await call.message.answer("请输入回复文字内容，或者直接发送一张图片：")
-        await AdminStates.WAITING_FOR_START_VALUE.set()
-    await call.answer()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_START_VALUE, content_types=[types.ContentType.TEXT, types.ContentType.PHOTO], user_id=DefaultConfig.ADMIN_ID)
-async def add_start_item_step3(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    text = data['menu_text']
-    atype = data['menu_type']
-    
-    if message.photo:
-        media_id = message.photo[-1].file_id
-        caption = message.caption or ""
-        db.add_start_menu_item(text, atype, action_value=caption, media_id=media_id)
-    else:
-        db.add_start_menu_item(text, atype, action_value=message.text)
-        
-    await message.reply("✅ 已成功添加菜单项")
-    await state.finish()
-
-@dp.callback_query_handler(text_startswith="del_start_item_", user_id=DefaultConfig.ADMIN_ID)
-async def del_start_item_handler(call: types.CallbackQuery):
-    item_id = int(call.data.split("_")[-1])
-    db.delete_start_menu_item(item_id)
-    await call.answer("已删除")
-    # 刷新
-    call.data = "admin_start"
-    await admin_menu_handler(call, None)
+# (Deleted obsolete Start Menu handlers)
 
 # --- 资源库管理逻辑 (抄袭核心) ---
 @dp.callback_query_handler(text="add_res_start", user_id=DefaultConfig.ADMIN_ID)
@@ -578,16 +449,28 @@ async def add_res_step3(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=AdminStates.WAITING_FOR_RES_REGION, user_id=DefaultConfig.ADMIN_ID)
 async def add_res_step4(message: types.Message, state: FSMContext):
+    await state.update_data(res_region=message.text)
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("第一页 (首屏)", callback_data="res_page_1"),
+        InlineKeyboardButton("第二页 (区域页)", callback_data="res_page_2")
+    )
+    await message.answer("请选择该资源存放的页面：", reply_markup=kb)
+
+@dp.callback_query_handler(text_startswith="res_page_", user_id=DefaultConfig.ADMIN_ID)
+async def add_res_final(call: types.CallbackQuery, state: FSMContext):
+    page = int(call.data.split("_")[-1])
     data = await state.get_data()
     db.add_resource(
         name=data['res_name'],
         url=data['res_url'],
         price=data['res_price'],
-        region=message.text,
-        status=1 # 默认 ❤️
+        region=data['res_region'],
+        status=1,
+        page=page
     )
-    await message.reply(f"✅ 资源 {data['res_name']} 已成功入库！")
+    await call.message.answer(f"✅ 资源 {data['res_name']} 已入库并添加到第 {page} 页！")
     await state.finish()
+    await call.answer()
 
 @dp.callback_query_handler(text_startswith="toggle_res_", user_id=DefaultConfig.ADMIN_ID)
 async def toggle_res_handler(call: types.CallbackQuery):

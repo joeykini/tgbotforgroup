@@ -51,22 +51,16 @@ class Database:
                 )
             """)
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS custom_buttons (
+                CREATE TABLE IF NOT EXISTS resources (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    text TEXT,
+                    name TEXT,
                     url TEXT,
-                    page INTEGER DEFAULT 1 -- 1 for page 1, 2 for page 2
-                )
-            """)
-            
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS start_menu (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    text TEXT,
-                    action_type TEXT, -- link, reply, report
-                    action_value TEXT, -- url or text content
-                    media_id TEXT, -- file_id for images
-                    row_index INTEGER DEFAULT 0
+                    status INTEGER DEFAULT 1, -- 1=❤️, 0=😈
+                    price INTEGER DEFAULT 0,
+                    region TEXT,
+                    tags TEXT, -- JSON list
+                    type TEXT, -- 颜值/服务等
+                    page INTEGER DEFAULT 1
                 )
             """)
 
@@ -136,30 +130,60 @@ class Database:
                 cursor.execute("ALTER TABLE users ADD COLUMN private_msgs INTEGER DEFAULT 0")
                 cursor.execute("ALTER TABLE users ADD COLUMN last_active DATE DEFAULT (DATE('now'))")
 
-            # Migration: Add page column to custom_buttons
-            cursor.execute("PRAGMA table_info(custom_buttons)")
+            # Migration: Add page column to resources
+            cursor.execute("PRAGMA table_info(resources)")
             cols = [info[1] for info in cursor.fetchall()]
             if 'page' not in cols:
-                cursor.execute("ALTER TABLE custom_buttons ADD COLUMN page INTEGER DEFAULT 1")
+                cursor.execute("ALTER TABLE resources ADD COLUMN page INTEGER DEFAULT 1")
             
             conn.commit()
 
-    # --- Custom Buttons Methods ---
-    def add_button(self, text, url, page=1):
+    # --- Resources (Master Grid) Methods ---
+    def add_resource(self, name, url, status=1, price=0, region=None, tags=None, res_type=None, page=1):
         with self._get_conn() as conn:
-            conn.execute("INSERT INTO custom_buttons (text, url, page) VALUES (?, ?, ?)", (text, url, page))
+            tags_json = json.dumps(tags or [])
+            conn.execute("""
+                INSERT INTO resources (name, url, status, price, region, tags, type, page) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, url, status, price, region, tags_json, res_type, page))
 
-    def delete_button(self, button_id):
+    def delete_resource(self, res_id):
         with self._get_conn() as conn:
-            conn.execute("DELETE FROM custom_buttons WHERE id = ?", (button_id,))
+            conn.execute("DELETE FROM resources WHERE id = ?", (res_id,))
 
-    def get_buttons(self, page=None):
+    def toggle_resource_status(self, res_id):
         with self._get_conn() as conn:
+            conn.execute("UPDATE resources SET status = 1 - status WHERE id = ?", (res_id,))
+
+    def get_resources(self, page=None, limit=50, offset=0, filters=None):
+        with self._get_conn() as conn:
+            sql = "SELECT id, name, url, status, price, region, tags, type, page FROM resources"
+            params = []
+            clauses = []
             if page:
-                cursor = conn.execute("SELECT id, text, url, page FROM custom_buttons WHERE page = ?", (page,))
-            else:
-                cursor = conn.execute("SELECT id, text, url, page FROM custom_buttons")
-            return [{"id": row[0], "text": row[1], "url": row[2], "page": row[3]} for row in cursor.fetchall()]
+                clauses.append("page = ?")
+                params.append(page)
+            if filters:
+                for k, v in filters.items():
+                    clauses.append(f"{k} = ?")
+                    params.append(v)
+            
+            if clauses:
+                sql += " WHERE " + " AND ".join(clauses)
+            
+            sql += " ORDER BY status DESC, id DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            
+            cursor = conn.execute(sql, params)
+            return [self._parse_resource_row(r) for r in cursor.fetchall()]
+
+    def _parse_resource_row(self, row):
+        return {
+            "id": row[0], "name": row[1], "url": row[2],
+            "status": row[3], "price": row[4], "region": row[5],
+            "tags": json.loads(row[6]) if row[6] else [],
+            "type": row[7], "page": row[8]
+        }
 
     # --- Scheduled Ads Methods ---
     def add_ad(self, content, images, msg_type, title=None, buttons=None):
@@ -245,26 +269,7 @@ class Database:
                 return kw['reply_content']
         return None
 
-    # --- Start Menu Methods (NEW) ---
-    def add_start_menu_item(self, text, action_type, action_value=None, media_id=None):
-        with self._get_conn() as conn:
-            conn.execute("INSERT INTO start_menu (text, action_type, action_value, media_id) VALUES (?, ?, ?, ?)", 
-                         (text, action_type, action_value, media_id))
-
-    def delete_start_menu_item(self, item_id):
-        with self._get_conn() as conn:
-            conn.execute("DELETE FROM start_menu WHERE id = ?", (item_id,))
-
-    def get_start_menu_items(self):
-        with self._get_conn() as conn:
-            cursor = conn.execute("SELECT id, text, action_type, action_value, media_id FROM start_menu")
-            return [{"id": row[0], "text": row[1], "type": row[2], "value": row[3], "media": row[4]} for row in cursor.fetchall()]
-
-    def get_start_menu_item(self, item_id):
-        with self._get_conn() as conn:
-            row = conn.execute("SELECT id, text, action_type, action_value, media_id FROM start_menu WHERE id = ?", (item_id,)).fetchone()
-            if not row: return None
-            return {"id": row[0], "text": row[1], "type": row[2], "value": row[3], "media": row[4]}
+    # (Deleted obsolete Start Menu methods)
 
     # --- Settings Methods ---
     def set_setting(self, key, value):
@@ -369,44 +374,4 @@ class Database:
                 "group": row[6], "private": row[7]
             }
 
-    # --- Resources (小精灵) Methods ---
-    def add_resource(self, name, url, status=1, price=0, region=None, tags=None, res_type=None):
-        with self._get_conn() as conn:
-            tags_json = json.dumps(tags or [])
-            conn.execute("""
-                INSERT INTO resources (name, url, status, price, region, tags, type) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (name, url, status, price, region, tags_json, res_type))
-
-    def delete_resource(self, res_id):
-        with self._get_conn() as conn:
-            conn.execute("DELETE FROM resources WHERE id = ?", (res_id,))
-
-    def toggle_resource_status(self, res_id):
-        with self._get_conn() as conn:
-            conn.execute("UPDATE resources SET status = 1 - status WHERE id = ?", (res_id,))
-
-    def get_resources(self, limit=12, offset=0, filters=None):
-        with self._get_conn() as conn:
-            sql = "SELECT id, name, url, status, price, region, tags, type FROM resources"
-            params = []
-            if filters:
-                clauses = []
-                for k, v in filters.items():
-                    clauses.append(f"{k} = ?")
-                    params.append(v)
-                sql += " WHERE " + " AND ".join(clauses)
-            
-            sql += " ORDER BY status DESC, id DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            
-            cursor = conn.execute(sql, params)
-            return [self._parse_resource_row(r) for r in cursor.fetchall()]
-
-    def _parse_resource_row(self, row):
-        return {
-            "id": row[0], "name": row[1], "url": row[2],
-            "status": row[3], "price": row[4], "region": row[5],
-            "tags": json.loads(row[6]) if row[6] else [],
-            "type": row[7]
-        }
+    # (Obsolete Methods Consolidated Above)

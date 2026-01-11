@@ -38,10 +38,5 @@ class AdminStates(StatesGroup):
     
     WAITING_FOR_REPORT_CHANNEL = State()
 
-    # Start Menu Wizard
-    WAITING_FOR_START_TEXT = State()
-    WAITING_FOR_START_TYPE = State()
-    WAITING_FOR_START_VALUE = State()
-
 class ReportStates(StatesGroup):
     WAITING_FOR_CONTENT = State()
