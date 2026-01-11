@@ -1,6 +1,8 @@
 import asyncio
 import os
 import time
+import json
+import random
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -45,7 +47,7 @@ def get_channels_keyboard():
     keyboard.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
     return keyboard
 
-# ================= 管理员后台逻辑 =================
+# ================= 管理员后台主逻辑 =================
 
 @dp.message_handler(commands=['settings'], user_id=DefaultConfig.ADMIN_ID)
 async def cmd_settings(message: types.Message):
@@ -63,7 +65,6 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext):
     elif action == "back":
         await call.message.edit_text("🛠 **系统设置后台**", reply_markup=get_settings_keyboard())
         await call.answer("已返回主菜单")
-        return
     elif action == "switches":
         await call.message.edit_text("⚙️ **功能开关**", reply_markup=get_switches_keyboard())
     elif action == "channels":
@@ -142,18 +143,15 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext):
 # --- 关键词回复逻辑 ---
 @dp.callback_query_handler(text="add_keyword", user_id=DefaultConfig.ADMIN_ID)
 async def add_keyword_start(call: types.CallbackQuery):
-    msg = await call.message.answer("请输入要触发的 **关键词**：")
-    asyncio.create_task(delete_later(msg, 120))
+    await call.message.answer("请输入要触发的 **关键词**：")
     await AdminStates.WAITING_FOR_KEYWORD_KEY.set()
     await call.answer()
 
 @dp.message_handler(state=AdminStates.WAITING_FOR_KEYWORD_KEY, user_id=DefaultConfig.ADMIN_ID)
 async def add_keyword_key(message: types.Message, state: FSMContext):
     await state.update_data(kw_key=message.text)
-    msg = await message.reply("请输入该关键词对应的 **回复内容**：")
-    asyncio.create_task(delete_later(msg, 120))
+    await message.reply("请输入该关键词对应的 **回复内容**：")
     await AdminStates.WAITING_FOR_KEYWORD_REPLY.set()
-    asyncio.create_task(delete_later(message, 120))
 
 @dp.message_handler(state=AdminStates.WAITING_FOR_KEYWORD_REPLY, user_id=DefaultConfig.ADMIN_ID)
 async def add_keyword_reply_content(message: types.Message, state: FSMContext):
@@ -161,9 +159,7 @@ async def add_keyword_reply_content(message: types.Message, state: FSMContext):
     keyword = data.get("kw_key")
     reply = message.text
     db.add_keyword_reply(keyword, reply)
-    msg = await message.reply(f"✅ 关键词规则已添加！\n当发送 `{keyword}` 时，自动回复内容。", parse_mode="Markdown")
-    asyncio.create_task(delete_later(msg, 120))
-    asyncio.create_task(delete_later(message, 120))
+    await message.reply(f"✅ 关键词规则已添加！")
     await state.finish()
 
 @dp.callback_query_handler(text_startswith="del_kw_", user_id=DefaultConfig.ADMIN_ID)
@@ -171,7 +167,7 @@ async def del_keyword_handler(call: types.CallbackQuery):
     kw_id = int(call.data.split("_")[-1])
     db.delete_keyword_reply(kw_id)
     await call.answer("关键词已删除")
-    await admin_menu_handler(call, None) # Refresh
+    await admin_menu_handler(call, None)
 
 # --- 自定义按钮逻辑 ---
 @dp.callback_query_handler(text="add_btn", user_id=DefaultConfig.ADMIN_ID)
@@ -190,12 +186,11 @@ async def add_btn_text(message: types.Message, state: FSMContext):
 async def add_btn_url(message: types.Message, state: FSMContext):
     url = message.text
     if not url.startswith("http"):
-        await message.answer("❌ 链接格式错误！请重新输入 (发送 /cancel 取消)：")
+        await message.answer("❌ 链接格式错误！请重新输入：")
         return
     data = await state.get_data()
-    btn_text = data.get("btn_text")
-    db.add_button(btn_text, url)
-    await message.answer(f"✅ 已添加按钮：[{btn_text}]({url})", parse_mode="Markdown", disable_web_page_preview=True)
+    db.add_button(data.get("btn_text"), url)
+    await message.answer(f"✅ 已添加按钮")
     await state.finish()
 
 @dp.callback_query_handler(text_startswith="del_btn_", user_id=DefaultConfig.ADMIN_ID)
@@ -203,24 +198,7 @@ async def del_btn_handler(call: types.CallbackQuery):
     btn_id = int(call.data.split("_")[2])
     db.delete_button(btn_id)
     await call.answer("✅ 按钮已删除")
-    await admin_menu_handler(call, None) # Refresh
-
-# --- 报告频道配置逻辑 ---
-@dp.callback_query_handler(text="edit_report_channel", user_id=DefaultConfig.ADMIN_ID)
-async def edit_report_channel(call: types.CallbackQuery):
-    await call.message.answer("请输入新的报告频道ID (例如 -100123456789)：")
-    await AdminStates.WAITING_FOR_REPORT_CHANNEL.set()
-    await call.answer()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_REPORT_CHANNEL, user_id=DefaultConfig.ADMIN_ID)
-async def save_report_channel(message: types.Message, state: FSMContext):
-    try:
-        channel_id = int(message.text)
-        db.set_setting("REPORT_CHANNEL", channel_id)
-        await message.reply(f"✅ 报告频道已更新为: `{channel_id}`", parse_mode="Markdown")
-        await state.finish()
-    except ValueError:
-        await message.reply("❌ ID必须是数字！请重新输入或发送 /cancel 取消。")
+    await admin_menu_handler(call, None)
 
 # --- 链接配置逻辑 ---
 @dp.callback_query_handler(text_startswith="edit_link_", user_id=DefaultConfig.ADMIN_ID)
@@ -261,9 +239,46 @@ async def save_link_config(message: types.Message, state: FSMContext):
         await message.reply(f"✅ 链接已更新！")
     await state.finish()
 
-# --- 开关、频道、联系人、广告管理逻辑 (省略部分重复细节) ---
-# ... 这里可以继续搬运剩下的 admin 逻辑 ...
+# --- 强制关注频道管理 (修正后的多步逻辑) ---
+@dp.callback_query_handler(text="add_channel", user_id=DefaultConfig.ADMIN_ID)
+async def add_channel_start(call: types.CallbackQuery):
+    await call.message.answer("请输入频道 **名称** (例如: 淮安麻辣鹅):")
+    await AdminStates.WAITING_FOR_CHANNEL_NAME.set()
+    await call.answer()
 
+@dp.message_handler(state=AdminStates.WAITING_FOR_CHANNEL_NAME, user_id=DefaultConfig.ADMIN_ID)
+async def add_channel_step1(message: types.Message, state: FSMContext):
+    await state.update_data(ch_name=message.text)
+    await message.reply("请输入频道 **ID** (例如: @huaianbendi 或 -100xxx):")
+    await AdminStates.WAITING_FOR_CHANNEL_ID.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_CHANNEL_ID, user_id=DefaultConfig.ADMIN_ID)
+async def add_channel_step2(message: types.Message, state: FSMContext):
+    await state.update_data(ch_id=message.text)
+    await message.reply("请输入频道 **跳转链接** (例如: https://t.me/huaianbendi):")
+    await AdminStates.WAITING_FOR_CHANNEL_URL.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_CHANNEL_URL, user_id=DefaultConfig.ADMIN_ID)
+async def add_channel_step3(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    new_ch = {"name": data['ch_name'], "id": data['ch_id'], "url": message.text}
+    channels = db.get_setting("REQUIRED_CHANNELS", DefaultConfig.REQUIRED_CHANNELS)
+    channels.append(new_ch)
+    db.set_setting("REQUIRED_CHANNELS", channels)
+    await message.reply(f"✅ 已成功添加频道: {data['ch_name']}")
+    await state.finish()
+
+@dp.callback_query_handler(text_startswith="del_channel_", user_id=DefaultConfig.ADMIN_ID)
+async def del_channel_handler(call: types.CallbackQuery):
+    idx = int(call.data.split("_")[2])
+    channels = db.get_setting("REQUIRED_CHANNELS", DefaultConfig.REQUIRED_CHANNELS)
+    if 0 <= idx < len(channels):
+        channels.pop(idx)
+        db.set_setting("REQUIRED_CHANNELS", channels)
+        await call.answer("已删除")
+        await call.message.edit_reply_markup(reply_markup=get_channels_keyboard())
+
+# --- 开关逻辑 ---
 @dp.callback_query_handler(text_startswith="toggle_", user_id=DefaultConfig.ADMIN_ID)
 async def toggle_handler(call: types.CallbackQuery):
     action = call.data.split("_")[1]
@@ -276,58 +291,198 @@ async def toggle_handler(call: types.CallbackQuery):
     await call.message.edit_reply_markup(reply_markup=get_switches_keyboard())
     await call.answer("设置已更新")
 
-@dp.callback_query_handler(text_startswith="del_channel_", user_id=DefaultConfig.ADMIN_ID)
-async def del_channel_handler(call: types.CallbackQuery):
-    idx = int(call.data.split("_")[2])
-    channels = db.get_setting("REQUIRED_CHANNELS", DefaultConfig.REQUIRED_CHANNELS)
-    if 0 <= idx < len(channels):
-        channels.pop(idx)
-        db.set_setting("REQUIRED_CHANNELS", channels)
-        await call.answer("已删除")
-        await call.message.edit_reply_markup(reply_markup=get_channels_keyboard())
+# --- 定时广告配置 ---
+@dp.callback_query_handler(text="add_random_ad", user_id=DefaultConfig.ADMIN_ID)
+async def add_random_ad_start(call: types.CallbackQuery):
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("🖼 带图片", callback_data="ad_img_yes"),
+        InlineKeyboardButton("📝 纯文字", callback_data="ad_img_no")
+    )
+    await call.message.answer("广告是否包含图片？", reply_markup=kb)
+    await AdminStates.WAITING_FOR_AD_IMAGE_DECISION.set()
 
-@dp.callback_query_handler(text="add_channel", user_id=DefaultConfig.ADMIN_ID)
-async def add_channel_start(call: types.CallbackQuery):
-    await call.message.answer("格式：`名称|ID|链接`")
-    await AdminStates.WAITING_FOR_CHANNEL_INFO.set()
+@dp.callback_query_handler(state=AdminStates.WAITING_FOR_AD_IMAGE_DECISION, user_id=DefaultConfig.ADMIN_ID)
+async def ad_image_decision(call: types.CallbackQuery, state: FSMContext):
+    if call.data == "ad_img_yes":
+        await call.message.answer("请发送图片，发送完点击 【✅ 完成】", 
+            reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("✅ 完成", callback_data="ad_img_done")))
+        await state.update_data(ad_images=[])
+        await AdminStates.WAITING_FOR_AD_IMAGES.set()
+    else:
+        await call.message.answer("请输入广告文字内容：")
+        await state.update_data(ad_images=[])
+        await AdminStates.WAITING_FOR_AD_TEXT.set()
+    await call.answer()
 
-@dp.message_handler(state=AdminStates.WAITING_FOR_CHANNEL_INFO, user_id=DefaultConfig.ADMIN_ID)
-async def add_channel_save(message: types.Message, state: FSMContext):
-    parts = message.text.split('|')
-    if len(parts) == 3:
-        new_ch = {"name": parts[0].strip(), "id": parts[1].strip(), "url": parts[2].strip()}
-        channels = db.get_setting("REQUIRED_CHANNELS", DefaultConfig.REQUIRED_CHANNELS)
-        channels.append(new_ch)
-        db.set_setting("REQUIRED_CHANNELS", channels)
-        await message.reply("✅ 已添加")
+@dp.message_handler(state=AdminStates.WAITING_FOR_AD_IMAGES, content_types=types.ContentType.PHOTO, user_id=DefaultConfig.ADMIN_ID)
+async def ad_image_upload(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['ad_images'].append(message.photo[-1].file_id)
+
+@dp.callback_query_handler(text="ad_img_done", state=AdminStates.WAITING_FOR_AD_IMAGES, user_id=DefaultConfig.ADMIN_ID)
+async def ad_image_finish(call: types.CallbackQuery):
+    await call.message.answer("图片上传完成，请输入广告文字：")
+    await AdminStates.WAITING_FOR_AD_TEXT.set()
+    await call.answer()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_AD_TEXT, user_id=DefaultConfig.ADMIN_ID)
+async def save_ad_text(message: types.Message, state: FSMContext):
+    await state.update_data(ad_content=message.text)
+    await message.reply("请输入广告按钮 (格式: 文字|链接，一行一个；无则回复 skip):")
+    await AdminStates.WAITING_FOR_AD_BUTTONS.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_AD_BUTTONS, user_id=DefaultConfig.ADMIN_ID)
+async def save_ad_buttons(message: types.Message, state: FSMContext):
+    text = message.text.strip()
+    buttons = []
+    if text.lower() != 'skip':
+        for line in text.split('\n'):
+            parts = line.split('|')
+            if len(parts) == 2:
+                buttons.append({"text": parts[0].strip(), "url": parts[1].strip()})
+    await state.update_data(ad_buttons=buttons)
+    await message.reply("最后，请为广告起个名字 (便于管理):")
+    await AdminStates.WAITING_FOR_AD_TITLE.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_AD_TITLE, user_id=DefaultConfig.ADMIN_ID)
+async def save_ad_title(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    db.add_ad(data['ad_content'], data['ad_images'], "photo" if data['ad_images'] else "text", message.text, data['ad_buttons'])
+    await message.reply(f"✅ 广告 {message.text} 已添加")
+    await state.finish()
+
+@dp.callback_query_handler(text_startswith="view_ad_", user_id=DefaultConfig.ADMIN_ID)
+async def view_ad_handler(call: types.CallbackQuery):
+    ad_id = int(call.data.split("_")[-1])
+    ad = db.get_ad(ad_id)
+    if not ad:
+        await call.answer("广告不存在")
+        return
+    text = f"📺 广告: {ad['title']}\n内容: {ad['content']}\n图片: {len(ad['images'])}张"
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("🗑 删除", callback_data=f"del_ad_{ad_id}")).add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_ad"))
+    await call.message.edit_text(text, reply_markup=kb)
+
+@dp.callback_query_handler(text_startswith="del_ad_", user_id=DefaultConfig.ADMIN_ID)
+async def del_ad_handler(call: types.CallbackQuery):
+    ad_id = int(call.data.split("_")[-1])
+    db.delete_ad(ad_id)
+    await call.answer("已删除")
+    await admin_menu_handler(call, None)
+
+@dp.callback_query_handler(text="edit_ad_interval", user_id=DefaultConfig.ADMIN_ID)
+async def edit_ad_interval(call: types.CallbackQuery):
+    await call.message.answer("请输入推送间隔 (秒):")
+    await AdminStates.WAITING_FOR_AD_INTERVAL.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_AD_INTERVAL, user_id=DefaultConfig.ADMIN_ID)
+async def save_ad_interval(message: types.Message, state: FSMContext):
+    if message.text.isdigit():
+        db.set_setting("AD_INTERVAL", int(message.text))
+        await message.reply("✅ 间隔已更新")
         await state.finish()
+
+# --- 联系人配置 ---
+@dp.callback_query_handler(text="edit_contact_name", user_id=DefaultConfig.ADMIN_ID)
+async def edit_contact_name(call: types.CallbackQuery):
+    await call.message.answer("请输入新的名称:")
+    await AdminStates.WAITING_FOR_CONTACT_NAME.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_CONTACT_NAME, user_id=DefaultConfig.ADMIN_ID)
+async def save_contact_name(message: types.Message, state: FSMContext):
+    db.set_setting("CONTACT_USER", message.text)
+    await message.reply("✅ 联系人名称已更新")
+    await state.finish()
+
+@dp.callback_query_handler(text="edit_contact_url", user_id=DefaultConfig.ADMIN_ID)
+async def edit_contact_url(call: types.CallbackQuery):
+    await call.message.answer("请输入新的链接:")
+    await AdminStates.WAITING_FOR_CONTACT_URL.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_CONTACT_URL, user_id=DefaultConfig.ADMIN_ID)
+async def save_contact_url(message: types.Message, state: FSMContext):
+    db.set_setting("CONTACT_URL", message.text)
+    await message.reply("✅ 联系人链接已更新")
+    await state.finish()
+
+# --- 报告/Start菜单 ---
+@dp.callback_query_handler(text="edit_report_channel", user_id=DefaultConfig.ADMIN_ID)
+async def edit_report_channel(call: types.CallbackQuery):
+    await call.message.answer("请输入报告频道 ID (如 -100xxx):")
+    await AdminStates.WAITING_FOR_REPORT_CHANNEL.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_REPORT_CHANNEL, user_id=DefaultConfig.ADMIN_ID)
+async def save_report_channel(message: types.Message, state: FSMContext):
+    db.set_setting("REPORT_CHANNEL", message.text)
+    await message.reply("✅ 报告频道已更新")
+    await state.finish()
+
+@dp.callback_query_handler(text="add_start_item", user_id=DefaultConfig.ADMIN_ID)
+async def add_start_item(call: types.CallbackQuery):
+    await call.message.answer("请输入按钮文字:")
+    await AdminStates.WAITING_FOR_START_TEXT.set()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_START_TEXT, user_id=DefaultConfig.ADMIN_ID)
+async def add_start_item_step1(message: types.Message, state: FSMContext):
+    await state.update_data(menu_text=message.text)
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("链接", callback_data="type_link"),
+        InlineKeyboardButton("回复", callback_data="type_reply"),
+        InlineKeyboardButton("举报", callback_data="type_report")
+    )
+    await message.reply("类型:", reply_markup=kb)
+    await AdminStates.WAITING_FOR_START_TYPE.set()
+
+@dp.callback_query_handler(state=AdminStates.WAITING_FOR_START_TYPE, user_id=DefaultConfig.ADMIN_ID)
+async def add_start_item_step2(call: types.CallbackQuery, state: FSMContext):
+    atype = call.data.split('_')[1]
+    await state.update_data(menu_type=atype)
+    if atype == 'report':
+        data = await state.get_data()
+        db.add_start_menu_item(data['menu_text'], 'report')
+        await call.message.answer("✅ 已添加")
+        await state.finish()
+    else:
+        await call.message.answer("请输入对应值 (URL 或回复文字):")
+        await AdminStates.WAITING_FOR_START_VALUE.set()
+    await call.answer()
+
+@dp.message_handler(state=AdminStates.WAITING_FOR_START_VALUE, user_id=DefaultConfig.ADMIN_ID)
+async def add_start_item_step3(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    db.add_start_menu_item(data['menu_text'], data['menu_type'], message.text)
+    await message.reply("✅ 已添加")
+    await state.finish()
+
+@dp.callback_query_handler(text_startswith="del_start_item_", user_id=DefaultConfig.ADMIN_ID)
+async def del_start_item_handler(call: types.CallbackQuery):
+    idx = int(call.data.split("_")[-1])
+    db.delete_start_menu_item(idx)
+    await call.answer("已删除")
+    await admin_menu_handler(call, None)
 
 # ================= 系统命令 =================
 
 @dp.message_handler(commands=['broadcast'], user_id=DefaultConfig.ADMIN_ID)
 async def cmd_broadcast(message: types.Message):
-    # 此处需要 Database.get_all_users，实现在 database.py 中
-    from database import Database
-    db_instance = Database() 
-    users = db_instance._get_conn().execute("SELECT user_id FROM users").fetchall()
-    users = [u[0] for u in users]
+    users = db.get_all_users()
     count = 0
+    args = message.get_args()
+    if not args: return
     for uid in users:
         try: 
-            await bot.send_message(uid, f"📢 {message.get_args()}")
+            await bot.send_message(uid, f"📢 {args}")
             count += 1
             await asyncio.sleep(0.05)
         except: pass
-    await message.reply(f"✅ 发送完成，送达: {count} 人")
+    await message.reply(f"✅ 送达: {count} 人")
 
 @dp.message_handler(commands=['export'], user_id=DefaultConfig.ADMIN_ID)
 async def cmd_export_db(message: types.Message):
-    if os.path.exists(DefaultConfig.DB_NAME):
-        await message.reply_document(types.InputFile(DefaultConfig.DB_NAME))
+    await message.reply_document(types.InputFile(DefaultConfig.DB_NAME))
 
 @dp.message_handler(commands=['import'], content_types=types.ContentType.DOCUMENT, user_id=DefaultConfig.ADMIN_ID)
 async def cmd_import_db(message: types.Message):
-    doc = message.document
-    await doc.download(destination_file=DefaultConfig.DB_NAME)
-    db.reload()
-    await message.reply("✅ 数据库已导入并重载")
+    if message.caption and '/import' in message.caption:
+        await message.document.download(destination_file=DefaultConfig.DB_NAME)
+        db.reload()
+        await message.reply("✅ 导入成功")

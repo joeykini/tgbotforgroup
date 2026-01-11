@@ -1,8 +1,6 @@
-import os
-
 class DefaultConfig:
     # 基础配置 (Token和ID通常不建议动态修改，除非重启Bot)
-    API_TOKEN = os.getenv('BOT_TOKEN', '8479273528:AAFA6c52AuxfXY3nd_nnAuFlwKQqxbfDrlI')
+    API_TOKEN = '8479273528:AAFA6c52AuxfXY3nd_nnAuFlwKQqxbfDrlI'
     ADMIN_ID = 6799513564
     DB_NAME = "bot_data.db"
     

@@ -8,7 +8,9 @@ class AdminStates(StatesGroup):
     WAITING_FOR_AD_TITLE = State()
     WAITING_FOR_AD_INTERVAL = State()
     
-    WAITING_FOR_CHANNEL_INFO = State()
+    WAITING_FOR_CHANNEL_NAME = State()
+    WAITING_FOR_CHANNEL_ID = State()
+    WAITING_FOR_CHANNEL_URL = State()
     
     WAITING_FOR_CONTACT_NAME = State()
     WAITING_FOR_CONTACT_URL = State()
