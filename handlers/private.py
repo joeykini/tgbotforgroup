@@ -39,8 +39,8 @@ def get_resource_grid_keyboard(page=1):
             kb.row(*row)
 
     # 先放可约，再放月休
-    add_items_to_kb(active, "--- ❤️ 当前可约 ---")
-    add_items_to_kb(resting, "--- 😈 休息中 ---")
+    add_items_to_kb(active)
+    add_items_to_kb(resting)
     
     # 底部导航栏
     if page == 1:
@@ -107,9 +107,10 @@ async def cmd_start(message: types.Message):
     await delete_later(message, 120)
 
 # --- 多页切换 ---
-@dp.callback_query_handler(text="welcome_page_1")
-@dp.callback_query_handler(text="welcome_page_2")
-async def welcome_pagination_handler(call: types.CallbackQuery):
+@dp.callback_query_handler(text="welcome_page_1", state="*")
+@dp.callback_query_handler(text="welcome_page_2", state="*")
+async def welcome_pagination_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
     page = int(call.data.split("_")[-1])
     kb = get_resource_grid_keyboard(page=page)
     # 处理文字，Page 2 可以显示筛选说明等
@@ -134,8 +135,9 @@ async def welcome_pagination_handler(call: types.CallbackQuery):
     await call.answer()
 
 # --- 个人中心 (Butterfly: 我的蓝精灵) ---
-@dp.callback_query_handler(text="my_home_stats")
-async def my_stats_handler(call: types.CallbackQuery):
+@dp.callback_query_handler(text="my_home_stats", state="*")
+async def my_stats_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
     stats = db.get_user_stats(call.from_user.id)
     if not stats: 
         await call.answer("暂无数据")
@@ -202,8 +204,9 @@ async def attr_filter_handler(call: types.CallbackQuery):
     await call.answer()
 
 # --- 返回主菜单 ---
-@dp.callback_query_handler(text="back_to_start")
-async def back_to_start_handler(call: types.CallbackQuery):
+@dp.callback_query_handler(text="back_to_start", state="*")
+async def back_to_start_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
     not_joined = await check_subscription(call.from_user.id)
     if not_joined: 
         await call.answer("请先关注频道")

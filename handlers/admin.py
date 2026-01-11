@@ -140,14 +140,14 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
         ).add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     elif action == "resources":
-        res_list = db.get_resources(limit=200) # 调大限制以防分页显示不全
+        res_list = db.get_resources(limit=200) # 调大限制
         p1 = [r for r in res_list if r['page'] == 1]
         p2 = [r for r in res_list if r['page'] == 2]
         text = (
             "🔘 **格栅按钮/资源管理**\n\n"
             f"📄 第一页 (首屏): {len(p1)} 个\n"
             f"📍 第二页 (区域): {len(p2)} 个\n\n"
-            "管理逻辑：点击下方资源可【切换❤️/😈状态】，或点击删除。"
+            "管理逻辑：点击资源可切换【❤️/😈】，删除请点击🗑。"
         )
         kb = InlineKeyboardMarkup(row_width=2)
         kb.add(InlineKeyboardButton("➕ 添加新按钮/资源", callback_data="add_res_start"))
@@ -156,21 +156,17 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
             if not items: continue
             kb.row(InlineKeyboardButton(f"--- 第{'一' if page_num==1 else '二'}页 ---", callback_data="none"))
             
-            # 分状态显示
+            # 分状态显示（移除文字分栏，仅分组）
             active = [r for r in items if r['status'] == 1]
             resting = [r for r in items if r['status'] == 0]
             
-            if active:
-                kb.row(InlineKeyboardButton("❤️ 可约中", callback_data="none"))
-                for r in active:
-                    kb.add(InlineKeyboardButton(f"❤️{r['name']}", callback_data=f"toggle_res_{r['id']}"),
-                           InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
+            for r in active:
+                kb.add(InlineKeyboardButton(f"❤️{r['name']}", callback_data=f"toggle_res_{r['id']}"),
+                       InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
             
-            if resting:
-                kb.row(InlineKeyboardButton("😈 月休中", callback_data="none"))
-                for r in resting:
-                    kb.add(InlineKeyboardButton(f"😈{r['name']}", callback_data=f"toggle_res_{r['id']}"),
-                           InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
+            for r in resting:
+                kb.add(InlineKeyboardButton(f"😈{r['name']}", callback_data=f"toggle_res_{r['id']}"),
+                       InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
                    
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
@@ -288,8 +284,13 @@ async def del_channel_handler(call: types.CallbackQuery):
         await call.message.edit_reply_markup(reply_markup=get_channels_keyboard())
 
 # --- 开关逻辑 ---
-@dp.callback_query_handler(text_startswith="toggle_", user_id=DefaultConfig.ADMIN_ID)
-async def toggle_handler(call: types.CallbackQuery):
+@dp.callback_query_handler(text_startswith="toggle_", user_id=DefaultConfig.ADMIN_ID, state="*")
+async def toggle_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
+    # 明确只处理系统开关，防止拦截 toggle_res_
+    if call.data not in ["toggle_welcome", "toggle_antilink"]:
+        return
+        
     action = call.data.split("_")[1]
     if action == "welcome":
         curr = db.get_setting("WELCOME_ENABLED", DefaultConfig.WELCOME_ENABLED)
@@ -535,16 +536,19 @@ async def add_res_final(call: types.CallbackQuery, state: FSMContext):
     await state.finish()
     await call.answer()
 
-@dp.callback_query_handler(text_startswith="toggle_res_", user_id=DefaultConfig.ADMIN_ID)
-async def toggle_res_handler(call: types.CallbackQuery):
+@dp.callback_query_handler(text_startswith="toggle_res_", user_id=DefaultConfig.ADMIN_ID, state="*")
+async def toggle_res_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
     res_id = int(call.data.split("_")[2])
     db.toggle_resource_status(res_id)
+    await reset_message_timer(call.message)
     await call.answer("状态已切换")
     call.data = "admin_resources"
     await admin_menu_handler(call, None)
 
-@dp.callback_query_handler(text_startswith="del_res_", user_id=DefaultConfig.ADMIN_ID)
-async def del_res_handler(call: types.CallbackQuery):
+@dp.callback_query_handler(text_startswith="del_res_", user_id=DefaultConfig.ADMIN_ID, state="*")
+async def del_res_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
     res_id = int(call.data.split("_")[2])
     db.delete_resource(res_id)
     await call.answer("已删除")
