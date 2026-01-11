@@ -471,23 +471,37 @@ async def add_res_step4(call: types.CallbackQuery, state: FSMContext):
         main_price = 0
     await state.update_data(res_price=main_price)
 
-    await call.message.answer("请输入所属区域 (例如: 淮安/清江浦):")
+    kb = InlineKeyboardMarkup(row_width=2)
+    regions = ["清江浦", "淮安区", "淮阴区", "洪泽区", "涟水县", "盱眙县", "金湖县"]
+    for r in regions:
+        kb.add(InlineKeyboardButton(r, callback_data=f"res_region_{r}"))
+    await call.message.edit_text("请选择所属区域：", reply_markup=kb)
     await AdminStates.WAITING_FOR_RES_REGION.set()
     await call.answer()
 
-@dp.message_handler(state=AdminStates.WAITING_FOR_RES_REGION, user_id=DefaultConfig.ADMIN_ID)
-async def add_res_step5(message: types.Message, state: FSMContext):
-    await state.update_data(res_region=message.text)
+@dp.callback_query_handler(state=AdminStates.WAITING_FOR_RES_REGION, text_startswith="res_region_", user_id=DefaultConfig.ADMIN_ID)
+async def add_res_step5(call: types.CallbackQuery, state: FSMContext):
+    region = call.data.split("_")[-1]
+    await state.update_data(res_region=region)
     kb = InlineKeyboardMarkup().add(
         InlineKeyboardButton("第一页 (首屏)", callback_data="res_page_1"),
         InlineKeyboardButton("第二页 (区域页)", callback_data="res_page_2")
     )
-    await message.answer("请选择该资源存放的页面：", reply_markup=kb)
+    await call.message.edit_text("请选择该资源存放的页面：", reply_markup=kb)
+    # 不再需要 WAITING_FOR_RES_PAGE 状态，因为 add_res_final 已经处理了 res_page_ 开头
+    # 但由于之前没进状态，这里我们显式保留状态或者直接在 final 处理所有状态
+    await call.answer()
 
-@dp.callback_query_handler(text_startswith="res_page_", user_id=DefaultConfig.ADMIN_ID)
+@dp.callback_query_handler(text_startswith="res_page_", user_id=DefaultConfig.ADMIN_ID, state="*")
 async def add_res_final(call: types.CallbackQuery, state: FSMContext):
-    page = int(call.data.split("_")[-1])
+    # 如果用户没在一流流程中但点击了按钮，可能 data 为空，这里加个保护
     data = await state.get_data()
+    if not data or 'res_name' not in data:
+        await call.answer("❌ 流程已过期，请重新添加。", show_alert=True)
+        await state.finish()
+        return
+
+    page = int(call.data.split("_")[-1])
     db.add_resource(
         name=data['res_name'],
         url=data['res_url'],
