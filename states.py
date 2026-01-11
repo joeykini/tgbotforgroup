@@ -25,6 +25,7 @@ class AdminStates(StatesGroup):
     
     WAITING_FOR_BUTTON_TEXT = State()
     WAITING_FOR_BUTTON_URL = State()
+    WAITING_FOR_BUTTON_PAGE = State()
     
     WAITING_FOR_KEYWORD_KEY = State()
     WAITING_FOR_KEYWORD_REPLY = State()

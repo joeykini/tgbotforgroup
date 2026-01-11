@@ -44,7 +44,8 @@ class Database:
                 CREATE TABLE IF NOT EXISTS custom_buttons (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     text TEXT,
-                    url TEXT
+                    url TEXT,
+                    page INTEGER DEFAULT 1 -- 1 for page 1, 2 for page 2
                 )
             """)
             
@@ -100,21 +101,30 @@ class Database:
                 )
             """)
             
+            # Migration: Add page column to custom_buttons
+            cursor.execute("PRAGMA table_info(custom_buttons)")
+            cols = [info[1] for info in cursor.fetchall()]
+            if 'page' not in cols:
+                cursor.execute("ALTER TABLE custom_buttons ADD COLUMN page INTEGER DEFAULT 1")
+            
             conn.commit()
 
     # --- Custom Buttons Methods ---
-    def add_button(self, text, url):
+    def add_button(self, text, url, page=1):
         with self._get_conn() as conn:
-            conn.execute("INSERT INTO custom_buttons (text, url) VALUES (?, ?)", (text, url))
+            conn.execute("INSERT INTO custom_buttons (text, url, page) VALUES (?, ?, ?)", (text, url, page))
 
     def delete_button(self, button_id):
         with self._get_conn() as conn:
             conn.execute("DELETE FROM custom_buttons WHERE id = ?", (button_id,))
 
-    def get_buttons(self):
+    def get_buttons(self, page=None):
         with self._get_conn() as conn:
-            cursor = conn.execute("SELECT id, text, url FROM custom_buttons")
-            return [{"id": row[0], "text": row[1], "url": row[2]} for row in cursor.fetchall()]
+            if page:
+                cursor = conn.execute("SELECT id, text, url, page FROM custom_buttons WHERE page = ?", (page,))
+            else:
+                cursor = conn.execute("SELECT id, text, url, page FROM custom_buttons")
+            return [{"id": row[0], "text": row[1], "url": row[2], "page": row[3]} for row in cursor.fetchall()]
 
     # --- Scheduled Ads Methods ---
     def add_ad(self, content, images, msg_type, title=None, buttons=None):

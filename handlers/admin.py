@@ -20,7 +20,7 @@ def get_settings_keyboard():
     keyboard.add(InlineKeyboardButton("⚙️ 功能开关设置", callback_data="admin_switches"))
     keyboard.add(InlineKeyboardButton("🔗 链接配置", callback_data="admin_links"))
     keyboard.add(InlineKeyboardButton("👤 联系人配置", callback_data="admin_contact"))
-    keyboard.add(InlineKeyboardButton("🔘 自定义按钮", callback_data="admin_buttons"))
+    keyboard.add(InlineKeyboardButton("🔘 欢迎语按钮管理 (多页)", callback_data="admin_buttons"))
     keyboard.add(InlineKeyboardButton("🚀 /start 菜单配置", callback_data="admin_start_menu"))
     keyboard.add(InlineKeyboardButton("🕒 定时广告配置", callback_data="admin_ad"))
     keyboard.add(InlineKeyboardButton("📝 报告频道配置", callback_data="admin_report"))
@@ -56,15 +56,19 @@ async def cmd_settings(message: types.Message):
     asyncio.create_task(delete_later(message, 120))
 
 @dp.callback_query_handler(text_startswith="admin_", user_id=DefaultConfig.ADMIN_ID, state="*")
-async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext):
-    await state.finish()
+async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None):
+    # 安全结束状态，防止 None 崩溃
+    if state:
+        await state.finish()
     
     action = call.data.split("_")[1]
     if action == "close":
         await call.message.delete()
+        return
     elif action == "back":
         await call.message.edit_text("🛠 **系统设置后台**", reply_markup=get_settings_keyboard())
         await call.answer("已返回主菜单")
+        return
     elif action == "switches":
         await call.message.edit_text("⚙️ **功能开关**", reply_markup=get_switches_keyboard())
     elif action == "channels":
@@ -110,12 +114,18 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext):
         ).add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     elif action == "buttons":
-        buttons = db.get_buttons()
-        text = "🔘 **自定义按钮管理**\n点击按钮可以删除它，或者点击下方添加新按钮。"
-        kb = InlineKeyboardMarkup(row_width=1)
-        for btn in buttons:
-            kb.add(InlineKeyboardButton(f"🗑 {btn['text']} -> {btn['url']}", callback_data=f"del_btn_{btn['id']}"))
-        kb.add(InlineKeyboardButton("➕ 添加按钮", callback_data="add_btn"))
+        p1 = db.get_buttons(page=1)
+        p2 = db.get_buttons(page=2)
+        text = (
+            "🔘 **欢迎语按钮管理**\n\n"
+            f"📄 **第一页 (5个建议)**: {len(p1)}个\n"
+            f"📍 **第二页 (区域/7个建议)**: {len(p2)}个\n\n"
+            "点击下方按钮查看/删除，或点击添加。"
+        )
+        kb = InlineKeyboardMarkup(row_width=2)
+        kb.add(InlineKeyboardButton("第一页管理", callback_data="manage_buttons_1"),
+               InlineKeyboardButton("第二页管理", callback_data="manage_buttons_2"))
+        kb.add(InlineKeyboardButton("➕ 添加新按钮", callback_data="add_btn"))
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     elif action == "keywords":
@@ -127,18 +137,31 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext):
             kb.add(InlineKeyboardButton(f"🗑 删除: {kw['keyword']}", callback_data=f"del_kw_{kw['id']}"))
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
-    elif action == "start_menu":
+    elif action == "start":
         items = db.get_start_menu_items()
         text = f"🚀 **Start 菜单配置**\n当前菜单项数: {len(items)}\n\n点击下方按钮可以删除，或添加新菜单项。"
         kb = InlineKeyboardMarkup(row_width=1)
         kb.add(InlineKeyboardButton("➕ 添加新菜单项", callback_data="add_start_item"))
         for item in items:
-            type_icon = "🔗" if item['type'] == 'link' else ("🖼" if item['media'] else "📝")
+            atype = item.get('type', 'reply')
+            type_icon = "🔗" if atype == 'link' else ("🖼" if item.get('media') else "📝")
             kb.add(InlineKeyboardButton(f"🗑 {type_icon} {item['text']}", callback_data=f"del_start_item_{item['id']}"))
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     
     await call.answer()
+
+# --- 按钮详情管理 (分页查看) ---
+@dp.callback_query_handler(text_startswith="manage_buttons_", user_id=DefaultConfig.ADMIN_ID)
+async def manage_buttons_page(call: types.CallbackQuery):
+    page = int(call.data.split("_")[-1])
+    buttons = db.get_buttons(page=page)
+    text = f"🔘 **第 {page} 页按钮列表**\n点击按钮即可删除："
+    kb = InlineKeyboardMarkup(row_width=1)
+    for btn in buttons:
+        kb.add(InlineKeyboardButton(f"🗑 {btn['text']} -> {btn['url']}", callback_data=f"del_btn_{btn['id']}"))
+    kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_buttons"))
+    await call.message.edit_text(text, reply_markup=kb)
 
 # --- 关键词回复逻辑 ---
 @dp.callback_query_handler(text="add_keyword", user_id=DefaultConfig.ADMIN_ID)
@@ -167,9 +190,10 @@ async def del_keyword_handler(call: types.CallbackQuery):
     kw_id = int(call.data.split("_")[-1])
     db.delete_keyword_reply(kw_id)
     await call.answer("关键词已删除")
+    call.data = "admin_keywords"
     await admin_menu_handler(call, None)
 
-# --- 自定义按钮逻辑 ---
+# --- 多页按钮逻辑 ---
 @dp.callback_query_handler(text="add_btn", user_id=DefaultConfig.ADMIN_ID)
 async def add_btn_start(call: types.CallbackQuery):
     await call.message.answer("请输入按钮显示的文字：")
@@ -188,16 +212,30 @@ async def add_btn_url(message: types.Message, state: FSMContext):
     if not url.startswith("http"):
         await message.answer("❌ 链接格式错误！请重新输入：")
         return
+    await state.update_data(btn_url=url)
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("第一页 (首屏)", callback_data="page_1"),
+        InlineKeyboardButton("第二页 (区域页)", callback_data="page_2")
+    )
+    await message.answer("请选择该按钮存放的页面：", reply_markup=kb)
+    await AdminStates.WAITING_FOR_BUTTON_PAGE.set()
+
+@dp.callback_query_handler(state=AdminStates.WAITING_FOR_BUTTON_PAGE, user_id=DefaultConfig.ADMIN_ID)
+async def add_btn_save(call: types.CallbackQuery, state: FSMContext):
+    page = int(call.data.split("_")[1])
     data = await state.get_data()
-    db.add_button(data.get("btn_text"), url)
-    await message.answer(f"✅ 已添加按钮")
+    db.add_button(data['btn_text'], data['btn_url'], page=page)
+    await call.message.answer(f"✅ 已成功添加到第 {page} 页")
     await state.finish()
+    await call.answer()
 
 @dp.callback_query_handler(text_startswith="del_btn_", user_id=DefaultConfig.ADMIN_ID)
 async def del_btn_handler(call: types.CallbackQuery):
     btn_id = int(call.data.split("_")[2])
     db.delete_button(btn_id)
     await call.answer("✅ 按钮已删除")
+    # 模拟返回列表页 (返回之前管理的页面)
+    call.data = "admin_buttons"
     await admin_menu_handler(call, None)
 
 # --- 链接配置逻辑 ---
@@ -239,7 +277,7 @@ async def save_link_config(message: types.Message, state: FSMContext):
         await message.reply(f"✅ 链接已更新！")
     await state.finish()
 
-# --- 强制关注频道管理 (修正后的多步逻辑) ---
+# --- 强制关注频道管理 ---
 @dp.callback_query_handler(text="add_channel", user_id=DefaultConfig.ADMIN_ID)
 async def add_channel_start(call: types.CallbackQuery):
     await call.message.answer("请输入频道 **名称** (例如: 淮安麻辣鹅):")
@@ -367,6 +405,7 @@ async def del_ad_handler(call: types.CallbackQuery):
     ad_id = int(call.data.split("_")[-1])
     db.delete_ad(ad_id)
     await call.answer("已删除")
+    call.data = "admin_ad"
     await admin_menu_handler(call, None)
 
 @dp.callback_query_handler(text="edit_ad_interval", user_id=DefaultConfig.ADMIN_ID)
@@ -404,7 +443,7 @@ async def save_contact_url(message: types.Message, state: FSMContext):
     await message.reply("✅ 联系人链接已更新")
     await state.finish()
 
-# --- 报告/Start菜单 ---
+# --- 报告频道 ---
 @dp.callback_query_handler(text="edit_report_channel", user_id=DefaultConfig.ADMIN_ID)
 async def edit_report_channel(call: types.CallbackQuery):
     await call.message.answer("请输入报告频道 ID (如 -100xxx):")
@@ -416,20 +455,22 @@ async def save_report_channel(message: types.Message, state: FSMContext):
     await message.reply("✅ 报告频道已更新")
     await state.finish()
 
+# --- Start 菜单配置 ---
 @dp.callback_query_handler(text="add_start_item", user_id=DefaultConfig.ADMIN_ID)
 async def add_start_item(call: types.CallbackQuery):
     await call.message.answer("请输入按钮文字:")
     await AdminStates.WAITING_FOR_START_TEXT.set()
+    await call.answer()
 
 @dp.message_handler(state=AdminStates.WAITING_FOR_START_TEXT, user_id=DefaultConfig.ADMIN_ID)
 async def add_start_item_step1(message: types.Message, state: FSMContext):
     await state.update_data(menu_text=message.text)
     kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("链接", callback_data="type_link"),
-        InlineKeyboardButton("回复", callback_data="type_reply"),
-        InlineKeyboardButton("举报", callback_data="type_report")
+        InlineKeyboardButton("🔗 链接", callback_data="type_link"),
+        InlineKeyboardButton("💬 回复文字/图片", callback_data="type_reply"),
+        InlineKeyboardButton("📝 举报功能", callback_data="type_report")
     )
-    await message.reply("类型:", reply_markup=kb)
+    await message.reply("请选择该按钮的功能类型:", reply_markup=kb)
     await AdminStates.WAITING_FOR_START_TYPE.set()
 
 @dp.callback_query_handler(state=AdminStates.WAITING_FOR_START_TYPE, user_id=DefaultConfig.ADMIN_ID)
@@ -439,25 +480,40 @@ async def add_start_item_step2(call: types.CallbackQuery, state: FSMContext):
     if atype == 'report':
         data = await state.get_data()
         db.add_start_menu_item(data['menu_text'], 'report')
-        await call.message.answer("✅ 已添加")
+        await call.message.answer("✅ 已成功添加举报按钮")
         await state.finish()
+    elif atype == 'link':
+        await call.message.answer("请输入跳转链接 (URL):")
+        await AdminStates.WAITING_FOR_START_VALUE.set()
     else:
-        await call.message.answer("请输入对应值 (URL 或回复文字):")
+        # reply 类型支持文字或图片
+        await call.message.answer("请输入回复文字内容，或者直接发送一张图片：")
         await AdminStates.WAITING_FOR_START_VALUE.set()
     await call.answer()
 
-@dp.message_handler(state=AdminStates.WAITING_FOR_START_VALUE, user_id=DefaultConfig.ADMIN_ID)
+@dp.message_handler(state=AdminStates.WAITING_FOR_START_VALUE, content_types=[types.ContentType.TEXT, types.ContentType.PHOTO], user_id=DefaultConfig.ADMIN_ID)
 async def add_start_item_step3(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    db.add_start_menu_item(data['menu_text'], data['menu_type'], message.text)
-    await message.reply("✅ 已添加")
+    text = data['menu_text']
+    atype = data['menu_type']
+    
+    if message.photo:
+        media_id = message.photo[-1].file_id
+        caption = message.caption or ""
+        db.add_start_menu_item(text, atype, action_value=caption, media_id=media_id)
+    else:
+        db.add_start_menu_item(text, atype, action_value=message.text)
+        
+    await message.reply("✅ 已成功添加菜单项")
     await state.finish()
 
 @dp.callback_query_handler(text_startswith="del_start_item_", user_id=DefaultConfig.ADMIN_ID)
 async def del_start_item_handler(call: types.CallbackQuery):
-    idx = int(call.data.split("_")[-1])
-    db.delete_start_menu_item(idx)
+    item_id = int(call.data.split("_")[-1])
+    db.delete_start_menu_item(item_id)
     await call.answer("已删除")
+    # 刷新
+    call.data = "admin_start"
     await admin_menu_handler(call, None)
 
 # ================= 系统命令 =================
