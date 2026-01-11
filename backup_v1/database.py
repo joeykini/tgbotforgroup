@@ -26,16 +26,7 @@ class Database:
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    username TEXT,
-                    points INTEGER DEFAULT 0,
-                    level TEXT DEFAULT '萌新',
-                    total_msgs INTEGER DEFAULT 0,
-                    daily_msgs INTEGER DEFAULT 0,
-                    monthly_msgs INTEGER DEFAULT 0,
-                    group_msgs INTEGER DEFAULT 0,
-                    private_msgs INTEGER DEFAULT 0,
-                    last_active DATE DEFAULT (DATE('now'))
+                    user_id INTEGER PRIMARY KEY, username TEXT, points INTEGER DEFAULT 0
                 )
             """)
             cursor.execute("""
@@ -66,19 +57,6 @@ class Database:
                     action_value TEXT, -- url or text content
                     media_id TEXT, -- file_id for images
                     row_index INTEGER DEFAULT 0
-                )
-            """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS resources (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT,
-                    url TEXT,
-                    status INTEGER DEFAULT 1, -- 1=❤️, 0=😈
-                    price INTEGER DEFAULT 0,
-                    region TEXT,
-                    tags TEXT, -- JSON list
-                    type TEXT -- 颜值/服务等
                 )
             """)
 
@@ -123,18 +101,6 @@ class Database:
                 )
             """)
             
-            # Migration for users table
-            cursor.execute("PRAGMA table_info(users)")
-            user_cols = [info[1] for info in cursor.fetchall()]
-            if 'total_msgs' not in user_cols:
-                cursor.execute("ALTER TABLE users ADD COLUMN level TEXT DEFAULT '萌新'")
-                cursor.execute("ALTER TABLE users ADD COLUMN total_msgs INTEGER DEFAULT 0")
-                cursor.execute("ALTER TABLE users ADD COLUMN daily_msgs INTEGER DEFAULT 0")
-                cursor.execute("ALTER TABLE users ADD COLUMN monthly_msgs INTEGER DEFAULT 0")
-                cursor.execute("ALTER TABLE users ADD COLUMN group_msgs INTEGER DEFAULT 0")
-                cursor.execute("ALTER TABLE users ADD COLUMN private_msgs INTEGER DEFAULT 0")
-                cursor.execute("ALTER TABLE users ADD COLUMN last_active DATE DEFAULT (DATE('now'))")
-
             # Migration: Add page column to custom_buttons
             cursor.execute("PRAGMA table_info(custom_buttons)")
             cols = [info[1] for info in cursor.fetchall()]
@@ -324,88 +290,7 @@ class Database:
             except:
                 return []
 
-    def log_user(self, user_id, username, is_group=True):
-        """记录用户信息并统计消息"""
+    def log_user(self, user_id, username):
+        """记录用户信息"""
         with self._get_conn() as conn:
-            # 1. 尝试初始化或更新基本信息
-            conn.execute("""
-                INSERT OR IGNORE INTO users (user_id, username) 
-                VALUES (?, ?)
-            """, (user_id, username))
-            
-            # 2. 每日清零检测 (重置逻辑在查询时做更稳，但在这里做也行)
-            cursor = conn.execute("SELECT last_active FROM users WHERE user_id = ?", (user_id,))
-            row = cursor.fetchone()
-            today = time.strftime("%Y-%m-%d")
-            
-            sql_updates = ["total_msgs = total_msgs + 1", "last_active = ?"]
-            params = [today]
-            
-            if row and row[0] != today:
-                # 跨天了，重置日增长
-                sql_updates.append("daily_msgs = 1")
-            else:
-                sql_updates.append("daily_msgs = daily_msgs + 1")
-            
-            if is_group:
-                sql_updates.append("group_msgs = group_msgs + 1")
-            else:
-                sql_updates.append("private_msgs = private_msgs + 1")
-                
-            conn.execute(f"UPDATE users SET {', '.join(sql_updates)} WHERE user_id = ?", params + [user_id])
-
-    def get_user_stats(self, user_id):
-        with self._get_conn() as conn:
-            cursor = conn.execute("""
-                SELECT user_id, username, level, total_msgs, daily_msgs, monthly_msgs, group_msgs, private_msgs 
-                FROM users WHERE user_id = ?
-            """, (user_id,))
-            row = cursor.fetchone()
-            if not row: return None
-            return {
-                "id": row[0], "name": row[1], "level": row[2],
-                "total": row[3], "daily": row[4], "monthly": row[5],
-                "group": row[6], "private": row[7]
-            }
-
-    # --- Resources (小精灵) Methods ---
-    def add_resource(self, name, url, status=1, price=0, region=None, tags=None, res_type=None):
-        with self._get_conn() as conn:
-            tags_json = json.dumps(tags or [])
-            conn.execute("""
-                INSERT INTO resources (name, url, status, price, region, tags, type) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (name, url, status, price, region, tags_json, res_type))
-
-    def delete_resource(self, res_id):
-        with self._get_conn() as conn:
-            conn.execute("DELETE FROM resources WHERE id = ?", (res_id,))
-
-    def toggle_resource_status(self, res_id):
-        with self._get_conn() as conn:
-            conn.execute("UPDATE resources SET status = 1 - status WHERE id = ?", (res_id,))
-
-    def get_resources(self, limit=12, offset=0, filters=None):
-        with self._get_conn() as conn:
-            sql = "SELECT id, name, url, status, price, region, tags, type FROM resources"
-            params = []
-            if filters:
-                clauses = []
-                for k, v in filters.items():
-                    clauses.append(f"{k} = ?")
-                    params.append(v)
-                sql += " WHERE " + " AND ".join(clauses)
-            
-            sql += " ORDER BY status DESC, id DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-            
-            cursor = conn.execute(sql, params)
-            return [self._parse_resource_row(r) for r in cursor.fetchall()]
-
-    def _parse_resource_row(self, row):
-        return {
-            "id": row[0], "name": row[1], "url": row[2],
-            "status": row[3], "price": row[4], "region": row[5],
-            "tags": json.loads(row[6]) if row[6] else [],
-            "type": row[7]
-        }
+            conn.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))

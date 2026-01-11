@@ -161,16 +161,9 @@ async def group_keyword_handler(message: types.Message):
     sent_msg = await message.reply(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     asyncio.create_task(delete_later(sent_msg, 120))
 
-# 5. 用户记录 & 防链接监控
-@dp.message_handler(content_types=types.ContentType.ANY, chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
-async def group_message_logger(message: types.Message):
-    # 记录用户信息和统计消息
-    username = message.from_user.username or message.from_user.full_name
-    db.log_user(message.from_user.id, username, is_group=True)
-    
-    # 记录该群组
-    db.add_group(message.chat.id, message.chat.title)
-
+# 5. 防链接监控
+@dp.message_handler(content_types=types.ContentType.TEXT, chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+async def anti_link_filter(message: types.Message):
     if not db.get_setting("ANTI_LINK_ENABLED", DefaultConfig.ANTI_LINK_ENABLED): return
     
     # 忽略管理员

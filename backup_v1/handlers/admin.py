@@ -21,7 +21,6 @@ def get_settings_keyboard():
     keyboard.add(InlineKeyboardButton("🔗 链接配置", callback_data="admin_links"))
     keyboard.add(InlineKeyboardButton("👤 联系人配置", callback_data="admin_contact"))
     keyboard.add(InlineKeyboardButton("🔘 欢迎语按钮管理 (多页)", callback_data="admin_buttons"))
-    keyboard.add(InlineKeyboardButton("🏷 资源库管理 (小精灵)", callback_data="admin_resources"))
     keyboard.add(InlineKeyboardButton("🚀 /start 菜单配置", callback_data="admin_start_menu"))
     keyboard.add(InlineKeyboardButton("🕒 定时广告配置", callback_data="admin_ad"))
     keyboard.add(InlineKeyboardButton("📝 报告频道配置", callback_data="admin_report"))
@@ -136,17 +135,6 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
         kb.add(InlineKeyboardButton("➕ 添加关键词", callback_data="add_keyword"))
         for kw in keywords:
             kb.add(InlineKeyboardButton(f"🗑 删除: {kw['keyword']}", callback_data=f"del_kw_{kw['id']}"))
-        kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
-        await call.message.edit_text(text, reply_markup=kb)
-    elif action == "resources":
-        res_list = db.get_resources(limit=50)
-        text = f"🏷 **资源库管理 (小精灵)**\n当前已录入: {len(res_list)} 个\n\n点击下方按钮可以【切换状态】或【删除】。"
-        kb = InlineKeyboardMarkup(row_width=1)
-        kb.add(InlineKeyboardButton("➕ 添加新资源", callback_data="add_res_start"))
-        for r in res_list:
-            status_icon = "❤️" if r['status'] == 1 else "😈"
-            kb.add(InlineKeyboardButton(f"{status_icon} {r['name']} | 切换状态", callback_data=f"toggle_res_{r['id']}"))
-            kb.add(InlineKeyboardButton(f"🗑 删除: {r['name']}", callback_data=f"del_res_{r['id']}"))
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     elif action == "start":
@@ -526,61 +514,6 @@ async def del_start_item_handler(call: types.CallbackQuery):
     await call.answer("已删除")
     # 刷新
     call.data = "admin_start"
-    await admin_menu_handler(call, None)
-
-# --- 资源库管理逻辑 (抄袭核心) ---
-@dp.callback_query_handler(text="add_res_start", user_id=DefaultConfig.ADMIN_ID)
-async def add_res_start(call: types.CallbackQuery):
-    await call.message.answer("请输入资源名称 (例如: 柚子):")
-    await AdminStates.WAITING_FOR_RES_NAME.set()
-    await call.answer()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_RES_NAME, user_id=DefaultConfig.ADMIN_ID)
-async def add_res_step1(message: types.Message, state: FSMContext):
-    await state.update_data(res_name=message.text)
-    await message.reply("请输入跳转链接 (URL):")
-    await AdminStates.WAITING_FOR_RES_URL.set()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_RES_URL, user_id=DefaultConfig.ADMIN_ID)
-async def add_res_step2(message: types.Message, state: FSMContext):
-    await state.update_data(res_url=message.text)
-    await message.reply("请输入价格 (例如: 10, 代表10z/10张，纯数字):")
-    await AdminStates.WAITING_FOR_RES_PRICE.set()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_RES_PRICE, user_id=DefaultConfig.ADMIN_ID)
-async def add_res_step3(message: types.Message, state: FSMContext):
-    price = int(message.text) if message.text.isdigit() else 0
-    await state.update_data(res_price=price)
-    await message.reply("请输入所属区域 (例如: 淮安/清江浦):")
-    await AdminStates.WAITING_FOR_RES_REGION.set()
-
-@dp.message_handler(state=AdminStates.WAITING_FOR_RES_REGION, user_id=DefaultConfig.ADMIN_ID)
-async def add_res_step4(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    db.add_resource(
-        name=data['res_name'],
-        url=data['res_url'],
-        price=data['res_price'],
-        region=message.text,
-        status=1 # 默认 ❤️
-    )
-    await message.reply(f"✅ 资源 {data['res_name']} 已成功入库！")
-    await state.finish()
-
-@dp.callback_query_handler(text_startswith="toggle_res_", user_id=DefaultConfig.ADMIN_ID)
-async def toggle_res_handler(call: types.CallbackQuery):
-    res_id = int(call.data.split("_")[2])
-    db.toggle_resource_status(res_id)
-    await call.answer("状态已切换")
-    call.data = "admin_resources"
-    await admin_menu_handler(call, None)
-
-@dp.callback_query_handler(text_startswith="del_res_", user_id=DefaultConfig.ADMIN_ID)
-async def del_res_handler(call: types.CallbackQuery):
-    res_id = int(call.data.split("_")[2])
-    db.delete_resource(res_id)
-    await call.answer("已删除")
-    call.data = "admin_resources"
     await admin_menu_handler(call, None)
 
 # ================= 系统命令 =================
