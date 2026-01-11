@@ -16,20 +16,33 @@ def get_resource_grid_keyboard(page=1):
     # 统一从 resources 表获取数据
     items = db.get_resources(page=page)
     
-    # 构造 3 列网格
-    row = []
-    for item in items:
-        icon = "❤️" if item.get('status') == 1 else "😈"
-        kb_text = f"{icon}{item['name']}"
-        kb_url = item['url']
-        row.append(InlineKeyboardButton(kb_text, url=kb_url))
-        if len(row) == 3:
-            kb.row(*row)
-            row = []
-    if row:
-        kb.row(*row)
+    # 按状态分组
+    active = [r for r in items if r.get('status') == 1]
+    resting = [r for r in items if r.get('status') == 0]
     
-    # 3. 底部导航栏
+    # 构造网格的辅助函数
+    def add_items_to_kb(res_items, label=None):
+        if not res_items: return
+        if label:
+            kb.row(InlineKeyboardButton(label, callback_data="none"))
+        
+        row = []
+        for item in res_items:
+            icon = "❤️" if item.get('status') == 1 else "😈"
+            kb_text = f"{icon}{item['name']}"
+            kb_url = item['url']
+            row.append(InlineKeyboardButton(kb_text, url=kb_url))
+            if len(row) == 3:
+                kb.row(*row)
+                row = []
+        if row:
+            kb.row(*row)
+
+    # 先放可约，再放月休
+    add_items_to_kb(active, "--- ❤️ 当前可约 ---")
+    add_items_to_kb(resting, "--- 😈 休息中 ---")
+    
+    # 底部导航栏
     if page == 1:
         kb.row(
             InlineKeyboardButton("🦋 我的统计", callback_data="my_home_stats"),

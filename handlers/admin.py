@@ -140,7 +140,7 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
         ).add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
     elif action == "resources":
-        res_list = db.get_resources(limit=100)
+        res_list = db.get_resources(limit=200) # 调大限制以防分页显示不全
         p1 = [r for r in res_list if r['page'] == 1]
         p2 = [r for r in res_list if r['page'] == 2]
         text = (
@@ -152,18 +152,25 @@ async def admin_menu_handler(call: types.CallbackQuery, state: FSMContext = None
         kb = InlineKeyboardMarkup(row_width=2)
         kb.add(InlineKeyboardButton("➕ 添加新按钮/资源", callback_data="add_res_start"))
         
-        # 分页显示
-        kb.row(InlineKeyboardButton("--- 第一页项 ---", callback_data="none"))
-        for r in p1:
-            icon = "❤️" if r['status'] == 1 else "😈"
-            kb.add(InlineKeyboardButton(f"{icon}{r['name']}", callback_data=f"toggle_res_{r['id']}"),
-                   InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
-        
-        kb.row(InlineKeyboardButton("--- 第二页项 ---", callback_data="none"))
-        for r in p2:
-            icon = "❤️" if r['status'] == 1 else "😈"
-            kb.add(InlineKeyboardButton(f"{icon}{r['name']}", callback_data=f"toggle_res_{r['id']}"),
-                   InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
+        for page_num, items in [(1, p1), (2, p2)]:
+            if not items: continue
+            kb.row(InlineKeyboardButton(f"--- 第{'一' if page_num==1 else '二'}页 ---", callback_data="none"))
+            
+            # 分状态显示
+            active = [r for r in items if r['status'] == 1]
+            resting = [r for r in items if r['status'] == 0]
+            
+            if active:
+                kb.row(InlineKeyboardButton("❤️ 可约中", callback_data="none"))
+                for r in active:
+                    kb.add(InlineKeyboardButton(f"❤️{r['name']}", callback_data=f"toggle_res_{r['id']}"),
+                           InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
+            
+            if resting:
+                kb.row(InlineKeyboardButton("😈 月休中", callback_data="none"))
+                for r in resting:
+                    kb.add(InlineKeyboardButton(f"😈{r['name']}", callback_data=f"toggle_res_{r['id']}"),
+                           InlineKeyboardButton("🗑", callback_data=f"del_res_{r['id']}"))
                    
         kb.add(InlineKeyboardButton("⬅️ 返回", callback_data="admin_back"))
         await call.message.edit_text(text, reply_markup=kb)
@@ -451,6 +458,18 @@ async def add_res_step3(call: types.CallbackQuery, state: FSMContext):
     await state.update_data(res_type=res_type)
     
     kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(InlineKeyboardButton("❤️ 可约", callback_data="res_status_1"),
+           InlineKeyboardButton("😈 月休", callback_data="res_status_0"))
+    await call.message.edit_text("请选择初始状态：", reply_markup=kb)
+    await AdminStates.WAITING_FOR_RES_STATUS.set()
+    await call.answer()
+
+@dp.callback_query_handler(state=AdminStates.WAITING_FOR_RES_STATUS, text_startswith="res_status_", user_id=DefaultConfig.ADMIN_ID)
+async def add_res_step_status(call: types.CallbackQuery, state: FSMContext):
+    status = int(call.data.split("_")[-1])
+    await state.update_data(res_status=status)
+    
+    kb = InlineKeyboardMarkup(row_width=2)
     kb.add(InlineKeyboardButton("💸 5z-8z", callback_data="tag_price_5-8"),
            InlineKeyboardButton("💸 9z-12z", callback_data="tag_price_9-12"),
            InlineKeyboardButton("💸 13z-16z", callback_data="tag_price_13-16"),
@@ -509,7 +528,7 @@ async def add_res_final(call: types.CallbackQuery, state: FSMContext):
         region=data['res_region'],
         tags=data.get('res_tags', []),
         res_type=data.get('res_type'),
-        status=1,
+        status=data.get('res_status', 1),
         page=page
     )
     await call.message.answer(f"✅ 资源 {data['res_name']} 已入库并添加到第 {page} 页！")
