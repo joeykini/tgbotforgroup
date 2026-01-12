@@ -152,6 +152,14 @@ class Database:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS check_ins (
+                    user_id INTEGER,
+                    check_date DATE DEFAULT (DATE('now')),
+                    PRIMARY KEY (user_id, check_date)
+                )
+            """)
             
             conn.commit()
 
@@ -456,6 +464,34 @@ class Database:
                 LIMIT ?
             """, (mascot_name, limit))
             return [self._parse_report_row(r) for r in cursor.fetchall()]
+
+    def get_user_reports_count(self, user_id):
+        with self._get_conn() as conn:
+            res = conn.execute("SELECT COUNT(*) FROM reports WHERE user_id = ?", (user_id,)).fetchone()
+            return res[0] if res else 0
+
+    def get_user_reports_list(self, user_id, limit=3):
+        with self._get_conn() as conn:
+            cursor = conn.execute("SELECT resource_name FROM reports WHERE user_id = ? ORDER BY created_at DESC LIMIT ?", (user_id, limit))
+            return [row[0] for row in cursor.fetchall()]
+
+    def do_check_in(self, user_id):
+        """每日签到逻辑，返回 (是否成功, 获得的积分/原因)"""
+        today = time.strftime("%Y-%m-%d")
+        with self._get_conn() as conn:
+            # 检查今天是否签过到
+            exists = conn.execute("SELECT 1 FROM check_ins WHERE user_id = ? AND check_date = ?", (user_id, today)).fetchone()
+            if exists:
+                return False, "您今天已经签过到了哦！明日再来吧～"
+            
+            # 签到
+            conn.execute("INSERT INTO check_ins (user_id, check_date) VALUES (?, ?)", (user_id, today))
+            
+            # 随机奖励 1-5 积分
+            import random
+            points = random.randint(1, 5)
+            self.add_points(user_id, points)
+            return True, points
 
     def _parse_report_row(self, row):
         return {

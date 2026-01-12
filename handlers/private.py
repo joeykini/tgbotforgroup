@@ -279,12 +279,19 @@ async def stats_sub_handler(call: types.CallbackQuery, state: FSMContext = None)
             "*(点击链接即可复制，发送给好友，对方点击「开始」后即可生效)*"
         )
     elif action == "my_reports":
+        count = db.get_user_reports_count(call.from_user.id)
+        recent = db.get_user_reports_list(call.from_user.id)
+        
         text = (
             "📚 **我的报告**\n\n"
-            "这里展示您提交并通过审核的所有验证报告。\n\n"
-            "当前状态：您尚未提交任何报告，或报告正在审核中。\n"
-            "点击「报告」按钮提交您的第一份实操反馈吧！"
+            f"您共提交了 **{count}** 份实操反馈。\n\n"
         )
+        if recent:
+            text += "**最近报告的精灵：**\n"
+            for name in recent:
+                text += f"- #{name}\n"
+        else:
+            text += "🧩 您尚未提交任何报告，点击「报告」按钮提交您的第一份实操反馈吧！"
     elif action == "explore_status":
         text = (
             "🗣 **探索情况与积分规则**\n\n"
@@ -302,15 +309,26 @@ async def stats_sub_handler(call: types.CallbackQuery, state: FSMContext = None)
         text = (
             "🎁 **福利列表**\n\n"
             "当前可用福利：\n"
-            "- [新人首充礼包]：内含 50 积分（点击领取，构思中）\n"
-            "- [每日签到]：随机获得 1-5 积分\n\n"
-            "更多限时活动请关注公告频道。"
+            "1. **每日签到**：每日可领取 1-5 随机积分奖励。\n"
+            "2. **新人首充礼包**：内含 50 积分（构思中）。\n\n"
+            "点击下方按钮进行签到：适配中..."
         )
+        kb.insert(InlineKeyboardButton("📅 立即签到", callback_data="do_check_in"))
     else:
         text = "功能模块建设中..."
 
     await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
     await call.answer()
+
+@dp.callback_query_handler(text="do_check_in", state="*")
+async def check_in_handler(call: types.CallbackQuery):
+    success, result = db.do_check_in(call.from_user.id)
+    if success:
+        await call.message.answer(f"✅ 签到成功！恭喜获得 {result} 鹅神积分！🦢", show_alert=True)
+        # 刷新页面显示最新积分 (可选，这里我们直接弹窗更直观)
+        await my_stats_handler(call)
+    else:
+        await call.answer(result, show_alert=True)
 
 # --- 区域页原逻辑 (保留用于 attr_filter 按钮如果将来要用) ---
 @dp.callback_query_handler(text="attr_filter")
