@@ -196,7 +196,10 @@ async def my_stats_handler(call: types.CallbackQuery, state: FSMContext = None):
         f"日发言:{stats['daily']}条\n"
         f"月发言:{stats['monthly']}条\n"
         f"群聊(有效):{stats['group']}条\n"
-        f"私聊(无效):{stats['private']}条"
+        f"私聊(无效):{stats['private']}条\n"
+        f"----- 【鹅神积分】 -----\n"
+        f"当前积分: {stats['points']} 🦢\n"
+        "*(注: 积分可通过在群内发言获得)*"
     )
     
     kb = InlineKeyboardMarkup(row_width=2)
@@ -236,11 +239,16 @@ async def stats_sub_handler(call: types.CallbackQuery, state: FSMContext = None)
         )
     elif action == "explore_status":
         text = (
-            "🗣 **探索情况**\n\n"
-            "您的探索等级通过群聊活跃度计算：\n"
-            "- 凡人世界：初心萌新\n"
-            "- 灵力波动：初级探路者\n\n"
-            "持续在群内发言可以提升您的爵位和权限。"
+            "🗣 **探索情况与积分规则**\n\n"
+            "**1. 积分获取：**\n"
+            "- 群内有效发言：+1 积分/条\n"
+            "- 邀请好友、提交报告等均可获得额外积分奖励。\n"
+            "- 私聊机器人由于不产生互动，不计入积分。\n\n"
+            "**2. 等级制度：**\n"
+            "- 萌新：0-100 积分\n"
+            "- 探路者：101-500 积分\n"
+            "- 鹅神使者：501+ 积分\n\n"
+            "持续活跃可解锁更多私密资源与福利。"
         )
     elif action == "welfare_list":
         text = (
@@ -332,6 +340,26 @@ async def check_sub_handler(call: types.CallbackQuery):
     else:
         await call.message.delete()
         await cmd_start(call.message)
+
+@dp.chat_member_handler()
+async def auto_check_sub(chat_member: types.ChatMemberUpdated):
+    """自动检测用户加入频道/群组"""
+    user_id = chat_member.from_user.id
+    
+    # 只有当用户状态变为 member/administrator 时触发
+    if chat_member.new_chat_member.status not in ['member', 'administrator', 'creator']:
+        return
+
+    # 检测是否已经关注了所有频道
+    not_joined = await check_subscription(user_id)
+    if not not_joined:
+        # 已全部加入，发送欢迎消息
+        success_text = get_welcome_text(chat_member.from_user.full_name, user_id)
+        kb = get_resource_grid_keyboard(page=1)
+        try:
+            await bot.send_message(user_id, "✅ 检测到您已加入所有必选频道/群组！\n\n" + success_text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
+        except Exception as e:
+            logging.error(f"Failed to send auto-welcome to {user_id}: {e}")
 
 # ================= 报告逻辑 =================
 @dp.callback_query_handler(text="report")

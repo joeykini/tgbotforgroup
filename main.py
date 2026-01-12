@@ -14,4 +14,5 @@ if __name__ == '__main__':
     handlers.setup_handlers()
     
     # 启动轮询
-    executor.start_polling(dp, on_startup=on_startup, on_shutdown=on_shutdown, skip_updates=True)
+    executor.start_polling(dp, on_startup=on_startup, on_shutdown=on_shutdown, skip_updates=True, 
+                           allowed_updates=["message", "callback_query", "chat_member", "inline_query"])

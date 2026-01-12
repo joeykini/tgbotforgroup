@@ -355,6 +355,7 @@ class Database:
             
             if is_group:
                 sql_updates.append("group_msgs = group_msgs + 1")
+                sql_updates.append("points = points + 1")
             else:
                 sql_updates.append("private_msgs = private_msgs + 1")
                 
@@ -363,7 +364,7 @@ class Database:
     def get_user_stats(self, user_id):
         with self._get_conn() as conn:
             cursor = conn.execute("""
-                SELECT user_id, username, level, total_msgs, daily_msgs, monthly_msgs, group_msgs, private_msgs 
+                SELECT user_id, username, level, total_msgs, daily_msgs, monthly_msgs, group_msgs, private_msgs, points 
                 FROM users WHERE user_id = ?
             """, (user_id,))
             row = cursor.fetchone()
@@ -371,7 +372,7 @@ class Database:
             return {
                 "id": row[0], "name": row[1], "level": row[2],
                 "total": row[3], "daily": row[4], "monthly": row[5],
-                "group": row[6], "private": row[7]
+                "group": row[6], "private": row[7], "points": row[8]
             }
 
     # (Obsolete Methods Consolidated Above)
