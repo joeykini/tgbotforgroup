@@ -209,6 +209,53 @@ async def my_stats_handler(call: types.CallbackQuery, state: FSMContext = None):
     await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
     await call.answer()
 
+@dp.callback_query_handler(text="invite_reward", state="*")
+@dp.callback_query_handler(text="my_reports", state="*")
+@dp.callback_query_handler(text="explore_status", state="*")
+@dp.callback_query_handler(text="welfare_list", state="*")
+async def stats_sub_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
+    
+    action = call.data
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("⬅️ 返回统计", callback_data="my_home_stats"))
+    
+    if action == "invite_reward":
+        text = (
+            "♻️ **邀请奖励说明**\n\n"
+            "邀请好友加入淮安榜，可获得以下奖励：\n"
+            "1. 每成功邀请 1 位好友：获得 10 积分\n"
+            "2. 累计邀请 10 位好友：获得「探险家」称号\n\n"
+            "您的专属推广链接可以通过点击下方按钮获取（构思中）。"
+        )
+    elif action == "my_reports":
+        text = (
+            "📚 **我的报告**\n\n"
+            "这里展示您提交并通过审核的所有验证报告。\n\n"
+            "当前状态：您尚未提交任何报告，或报告正在审核中。\n"
+            "点击「报告」按钮提交您的第一份实操反馈吧！"
+        )
+    elif action == "explore_status":
+        text = (
+            "🗣 **探索情况**\n\n"
+            "您的探索等级通过群聊活跃度计算：\n"
+            "- 凡人世界：初心萌新\n"
+            "- 灵力波动：初级探路者\n\n"
+            "持续在群内发言可以提升您的爵位和权限。"
+        )
+    elif action == "welfare_list":
+        text = (
+            "🎁 **福利列表**\n\n"
+            "当前可用福利：\n"
+            "- [新人首充礼包]：内含 50 积分（点击领取，构思中）\n"
+            "- [每日签到]：随机获得 1-5 积分\n\n"
+            "更多限时活动请关注公告频道。"
+        )
+    else:
+        text = "功能模块建设中..."
+
+    await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
+    await call.answer()
+
 # --- 区域页原逻辑 (保留用于 attr_filter 按钮如果将来要用) ---
 @dp.callback_query_handler(text="attr_filter")
 async def attr_filter_handler(call: types.CallbackQuery):
