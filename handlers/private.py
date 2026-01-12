@@ -13,7 +13,21 @@ from utils import delete_later, check_subscription, get_subscription_keyboard
 def get_resource_grid_keyboard(page=1):
     kb = InlineKeyboardMarkup(row_width=3)
     
-    # 统一从 resources 表获取数据
+    if page == 2:
+        # 区域选择页面：显示 7 个行政区
+        regions = ["清江浦", "淮安区", "淮阴区", "洪泽区", "涟水县", "盱眙县", "金湖县"]
+        btns = [InlineKeyboardButton(r, callback_data=f"filter_region_{r}") for r in regions]
+        # 每行 3 个
+        for i in range(0, len(btns), 3):
+            kb.row(*btns[i:i+3])
+        
+        kb.row(
+            InlineKeyboardButton("❮ 首屏", callback_data="welcome_page_1"),
+            InlineKeyboardButton("🌸 广告页 ❯", callback_data="welcome_page_3")
+        )
+        return kb
+
+    # 统一从 resources 表获取数据 (Page 1 or 3)
     items = db.get_resources(page=page)
     
     # 按状态分组
@@ -21,11 +35,8 @@ def get_resource_grid_keyboard(page=1):
     resting = [r for r in items if r.get('status') == 0]
     
     # 构造网格的辅助函数
-    def add_items_to_kb(res_items, label=None):
+    def add_items_to_kb(res_items):
         if not res_items: return
-        if label:
-            kb.row(InlineKeyboardButton(label, callback_data="none"))
-        
         row = []
         for item in res_items:
             icon = "❤️" if item.get('status') == 1 else "😈"
@@ -48,17 +59,38 @@ def get_resource_grid_keyboard(page=1):
             InlineKeyboardButton("🦋 我的统计", callback_data="my_home_stats"),
             InlineKeyboardButton("🐕 区域页 ❯", callback_data="welcome_page_2")
         )
-    elif page == 2:
-        kb.row(
-            InlineKeyboardButton("❮ 首屏", callback_data="welcome_page_1"),
-            InlineKeyboardButton("🌸 广告页 ❯", callback_data="welcome_page_3")
-        )
     else: # page 3
         kb.row(
             InlineKeyboardButton("❮ 区域页", callback_data="welcome_page_2"),
             InlineKeyboardButton("🏠 返回首页", callback_data="welcome_page_1")
         )
     
+    return kb
+
+def get_region_resources_keyboard(region):
+    kb = InlineKeyboardMarkup(row_width=3)
+    items = db.get_resources(filters={"region": region}, limit=100)
+    
+    active = [r for r in items if r.get('status') == 1]
+    resting = [r for r in items if r.get('status') == 0]
+    
+    def add_items_to_kb(res_items):
+        if not res_items: return
+        row = []
+        for item in res_items:
+            icon = "❤️" if item.get('status') == 1 else "😈"
+            kb_text = f"{icon}{item['name']}"
+            kb_url = item['url']
+            row.append(InlineKeyboardButton(kb_text, url=kb_url))
+            if len(row) == 3:
+                kb.row(*row)
+                row = []
+        if row: kb.row(*row)
+
+    add_items_to_kb(active)
+    add_items_to_kb(resting)
+    
+    kb.add(InlineKeyboardButton("⬅️ 返回区域列表", callback_data="welcome_page_2"))
     return kb
 
 def get_welcome_text(user_full_name, user_id):
@@ -110,7 +142,6 @@ async def cmd_start(message: types.Message):
     await delete_later(sent_msg, 120)
     await delete_later(message, 120)
 
-# --- 多页切换 ---
 @dp.callback_query_handler(text="welcome_page_1", state="*")
 @dp.callback_query_handler(text="welcome_page_2", state="*")
 @dp.callback_query_handler(text="welcome_page_3", state="*")
@@ -119,17 +150,29 @@ async def welcome_pagination_handler(call: types.CallbackQuery, state: FSMContex
     try:
         page = int(call.data.split("_")[-1])
         kb = get_resource_grid_keyboard(page=page)
-        
         text = get_welcome_text(call.from_user.full_name, call.from_user.id)
-        # 在文本上方加一个小提示，说明当前在第几页
-        page_names = ["首页", "区域", "广告"]
-        text = f"📍 当前位置：{page_names[page-1]}\n\n" + text
         
         await reset_message_timer(call.message)
         await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     except Exception as e:
-        print(f"Pagination error: {e}")
-        await call.answer("❌ 页面切换失败", show_alert=True)
+        # 忽略 "Message is not modified" 错误
+        if "message is not modified" not in str(e).lower():
+            print(f"Pagination error: {e}")
+    await call.answer()
+
+@dp.callback_query_handler(text_startswith="filter_region_", state="*")
+async def region_filter_handler(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
+    try:
+        region = call.data.replace("filter_region_", "")
+        kb = get_region_resources_keyboard(region)
+        text = get_welcome_text(call.from_user.full_name, call.from_user.id)
+        text = f"📍 当前选择区域：{region}\n\n" + text
+        
+        await reset_message_timer(call.message)
+        await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
+    except:
+        pass
     await call.answer()
 
 # --- 个人中心 (Butterfly: 我的蓝精灵) ---
