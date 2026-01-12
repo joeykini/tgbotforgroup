@@ -116,10 +116,30 @@ def get_welcome_text(user_full_name, user_id):
 @dp.message_handler(commands=['start'], chat_type=types.ChatType.PRIVATE)
 async def cmd_start(message: types.Message):
     # 记录私聊记录
-    db.log_user(message.from_user.id, message.from_user.username or message.from_user.full_name, is_group=False)
+    args = message.get_args()
+    user_id = message.from_user.id
+    
+    # 检测是否是新用户并处理邀请
+    is_new_user = False
+    with db._get_conn() as conn:
+        res = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        if not res:
+            is_new_user = True
+
+    db.log_user(user_id, message.from_user.username or message.from_user.full_name, is_group=False)
+
+    if is_new_user and args and args.isdigit():
+        referrer_id = int(args)
+        if referrer_id != user_id:
+            db.add_points(referrer_id, 10) # 邀请奖励 10 积分
+            with db._get_conn() as conn:
+                conn.execute("UPDATE users SET referred_by = ? WHERE user_id = ?", (referrer_id, user_id))
+            try:
+                await bot.send_message(referrer_id, f"🎊 嘿！鹅友 {message.from_user.full_name} 通过您的链接开启了探索，您获得了 10 积分！")
+            except: pass
 
     # 检测关注状态
-    not_joined = await check_subscription(message.from_user.id)
+    not_joined = await check_subscription(user_id)
     link_huaian = db.get_setting("LINK_HUAIAN", DefaultConfig.LINK_HUAIAN)
 
     if not_joined:
@@ -223,12 +243,16 @@ async def stats_sub_handler(call: types.CallbackQuery, state: FSMContext = None)
     kb = InlineKeyboardMarkup().add(InlineKeyboardButton("⬅️ 返回统计", callback_data="my_home_stats"))
     
     if action == "invite_reward":
+        bot_info = await bot.get_me()
+        invite_link = f"https://t.me/{bot_info.username}?start={call.from_user.id}"
         text = (
             "♻️ **邀请奖励说明**\n\n"
             "邀请好友加入淮安榜，可获得以下奖励：\n"
             "1. 每成功邀请 1 位好友：获得 10 积分\n"
             "2. 累计邀请 10 位好友：获得「探险家」称号\n\n"
-            "您的专属推广链接可以通过点击下方按钮获取（构思中）。"
+            "**您的专属邀请链接：**\n"
+            f"`{invite_link}`\n\n"
+            "*(点击链接即可复制，发送给好友，对方点击「开始」后即可生效)*"
         )
     elif action == "my_reports":
         text = (

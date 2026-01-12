@@ -36,6 +36,7 @@ class Database:
                     monthly_msgs INTEGER DEFAULT 0,
                     group_msgs INTEGER DEFAULT 0,
                     private_msgs INTEGER DEFAULT 0,
+                    referred_by INTEGER,
                     last_active DATE DEFAULT (DATE('now'))
                 )
             """)
@@ -128,6 +129,7 @@ class Database:
                 cursor.execute("ALTER TABLE users ADD COLUMN monthly_msgs INTEGER DEFAULT 0")
                 cursor.execute("ALTER TABLE users ADD COLUMN group_msgs INTEGER DEFAULT 0")
                 cursor.execute("ALTER TABLE users ADD COLUMN private_msgs INTEGER DEFAULT 0")
+                cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
                 cursor.execute("ALTER TABLE users ADD COLUMN last_active DATE DEFAULT (DATE('now'))")
 
             # Migration: Add page column to resources
@@ -360,6 +362,10 @@ class Database:
                 sql_updates.append("private_msgs = private_msgs + 1")
                 
             conn.execute(f"UPDATE users SET {', '.join(sql_updates)} WHERE user_id = ?", params + [user_id])
+
+    def add_points(self, user_id, amount):
+        with self._get_conn() as conn:
+            conn.execute("UPDATE users SET points = points + ? WHERE user_id = ?", (amount, user_id))
 
     def get_user_stats(self, user_id):
         with self._get_conn() as conn:
