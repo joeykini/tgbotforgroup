@@ -324,7 +324,7 @@ async def stats_sub_handler(call: types.CallbackQuery, state: FSMContext = None)
 async def check_in_handler(call: types.CallbackQuery):
     success, result = db.do_check_in(call.from_user.id)
     if success:
-        await call.message.answer(f"✅ 签到成功！恭喜获得 {result} 鹅神积分！🦢", show_alert=True)
+        await call.answer(f"✅ 签到成功！恭喜获得 {result} 鹅神积分！🦢", show_alert=True)
         # 刷新页面显示最新积分 (可选，这里我们直接弹窗更直观)
         await my_stats_handler(call)
     else:
