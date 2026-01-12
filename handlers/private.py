@@ -141,7 +141,16 @@ async def cmd_start(message: types.Message):
     # 处理报告深层链接
     if args:
         if args.startswith("report_"):
-            mascot_name = args.replace("report_", "").strip()
+            parts = args.split("_")
+            mascot_name = parts[1]
+            target_chat = None
+            if len(parts) > 2:
+                # 恢复负号
+                target_chat = parts[2].replace("n", "-")
+            
+            # 记录目标群组到 state
+            await state.update_data(report_mascot=mascot_name, target_chat=target_chat)
+            
             # 模拟发送 "报告 名字" 触发逻辑
             message.text = f"报告 {mascot_name}"
             await start_report_msg(message, state)
@@ -473,25 +482,26 @@ async def process_report_content(message: types.Message, state: FSMContext):
     # 保存到数据库
     report_id = db.add_report(message.from_user.id, mascot_name, content, media_id, media_type)
 
-    # 推送到报告频道
-    report_channel = db.get_setting("REPORT_CHANNEL", DefaultConfig.REPORT_CHANNEL)
-    if report_channel:
+    # 推送目标：优先使用来源群组，否则使用配置频道
+    target_chat = data.get("target_chat") or db.get_setting("REPORT_CHANNEL", DefaultConfig.REPORT_CHANNEL)
+    
+    if target_chat:
         prefix = f"👤 **来自: {sender_name}**\n\n"
         report_text = prefix + content
         sent_msg = None
         try:
             kb = get_report_kb(report_id)
             if media_type == "photo":
-                sent_msg = await bot.send_photo(report_channel, media_id, caption=report_text, reply_markup=kb, parse_mode="Markdown")
+                sent_msg = await bot.send_photo(target_chat, media_id, caption=report_text, reply_markup=kb, parse_mode="Markdown")
             elif media_type == "video":
-                sent_msg = await bot.send_video(report_channel, media_id, caption=report_text, reply_markup=kb, parse_mode="Markdown")
+                sent_msg = await bot.send_video(target_chat, media_id, caption=report_text, reply_markup=kb, parse_mode="Markdown")
             else:
-                sent_msg = await bot.send_message(report_channel, report_text, reply_markup=kb, parse_mode="Markdown")
+                sent_msg = await bot.send_message(target_chat, report_text, reply_markup=kb, parse_mode="Markdown")
             
             if sent_msg:
                 db.update_report_msg(report_id, sent_msg.message_id)
         except Exception as e:
-            logging.error(f"Failed to send report to channel: {e}")
+            logging.error(f"Failed to send report to target {target_chat}: {e}")
 
     await message.reply("✅ 报告已提交，感谢您的真实反馈！\n积分奖励已到账（构思中）。")
     await state.finish()

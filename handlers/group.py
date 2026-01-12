@@ -168,8 +168,9 @@ async def group_report_trigger(message: types.Message):
     mascot_name = parts[1].strip()
     bot_info = await bot.get_me()
     # 构造深层链接跳转私聊并自动带出报告指令
-    # 注意：start 参数不能包含空格，所以这里可能需要用下划线或仅传名字
-    deep_link = f"https://t.me/{bot_info.username}?start=report_{mascot_name}"
+    # start 参数限制：[a-zA-Z0-9_-]，负号用 n 代替
+    chat_id_str = str(message.chat.id).replace("-", "n")
+    deep_link = f"https://t.me/{bot_info.username}?start=report_{mascot_name}_{chat_id_str}"
     
     kb = InlineKeyboardMarkup().add(InlineKeyboardButton("📝 点击此处私聊提交报告", url=deep_link))
     sent_msg = await message.reply(f"🔍 收到您的反馈请求：`#{mascot_name}`\n请点击下方按钮进入私聊获取模版。", 
