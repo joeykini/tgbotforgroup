@@ -6,7 +6,7 @@ from aiogram.dispatcher import FSMContext
 from loader import dp, db, bot
 from config import DefaultConfig
 from states import ReportStates
-from utils import delete_later, check_subscription, get_subscription_keyboard
+from utils import delete_later, check_subscription, get_subscription_keyboard, reset_message_timer
 
 # ================= 辅助函数：构造 3 列资源网格 =================
 
