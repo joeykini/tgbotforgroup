@@ -138,6 +138,21 @@ async def cmd_start(message: types.Message):
                 await bot.send_message(referrer_id, f"🎊 嘿！鹅友 {message.from_user.full_name} 通过您的链接开启了探索，您获得了 10 积分！")
             except: pass
 
+    # 处理报告深层链接
+    if args:
+        if args.startswith("report_"):
+            mascot_name = args.replace("report_", "").strip()
+            # 模拟发送 "报告 名字" 触发逻辑
+            message.text = f"报告 {mascot_name}"
+            await start_report_msg(message, state)
+            return
+        elif args.startswith("view_report_"):
+            mascot_name = args.replace("view_report_", "").strip()
+            # 模拟发送 "看报告 名字" 触发逻辑
+            message.text = f"看报告 {mascot_name}"
+            await view_reports_msg(message, state)
+            return
+
     # 检测关注状态
     not_joined = await check_subscription(user_id)
     link_huaian = db.get_setting("LINK_HUAIAN", DefaultConfig.LINK_HUAIAN)
@@ -386,26 +401,159 @@ async def auto_check_sub(chat_member: types.ChatMemberUpdated):
             logging.error(f"Failed to send auto-welcome to {user_id}: {e}")
 
 # ================= 报告逻辑 =================
-@dp.callback_query_handler(text="report")
-async def start_report_callback(call: types.CallbackQuery):
-    await call.message.answer("📝 请直接在此发送您的反馈内容。")
-    await ReportStates.WAITING_FOR_CONTENT.set()
-    await call.answer()
 
-@dp.message_handler(state=ReportStates.WAITING_FOR_CONTENT, content_types=[types.ContentType.TEXT, types.ContentType.PHOTO])
-async def process_report(message: types.Message, state: FSMContext):
-    report_channel = db.get_setting("REPORT_CHANNEL", DefaultConfig.REPORT_CHANNEL)
-    if not report_channel:
-        await message.reply("⚠️ 系统暂未配置报告频道。")
-        await state.finish()
+REPORT_TEMPLATE = (
+    "【自动报告】：@{mascot_name}\n"
+    "【妹子花名】：#{mascot_name}\n"
+    "【修车类型】：一课，两课，双飞，包夜；\n"
+    "【身高身材】：目测身高、身材形容（苗条、过瘦、偏胖等等）；\n"
+    "【颜值相似】：真人和照片几分像；\n"
+    "【凶器罩杯】：目测凶器大小，A-H；\n"
+    "【服务项目】：实际过程中包含的所有服务项目（尽量不要遗漏）；\n"
+    "【服务详情】：具体写整个服务过程、感受等（尤其特点）自由发挥；\n"
+    "【机车行为】：是否有机车行为（久等、态度差、玩手机、催等等）；\n"
+    "【优点缺点】：简短总结优缺点；\n"
+    "【调教建议】：请指出一些可以优化的细节；\n"
+    "【推荐程度】：X.X分/满分10.0分；"
+)
+
+def get_report_kb(report_id, likes=0, dislikes=0):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton(f"👍 {likes}", callback_data=f"vote_like_{report_id}"),
+        InlineKeyboardButton(f"👎 {dislikes}", callback_data=f"vote_dislike_{report_id}")
+    )
+    return kb
+
+@dp.message_handler(lambda m: m.text and m.text.startswith("报告"), chat_type=types.ChatType.PRIVATE, state="*")
+async def start_report_msg(message: types.Message, state: FSMContext):
+    if state: await state.finish()
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("📝 请输入要报告的小精灵名字，例如：`报告 欣欣宝`", parse_mode="Markdown")
         return
-    try:
-        prefix = f"👤 来自: {message.from_user.full_name} ({message.from_user.id})\n\n"
-        if message.photo:
-            await bot.send_photo(report_channel, message.photo[-1].file_id, caption=prefix + (message.caption or ""))
-        else:
-            await bot.send_message(report_channel, prefix + message.text)
-        await message.reply("✅ 报告已提交。")
-    except Exception as e:
-        await message.reply(f"⚠️ 提交失败: {e}")
+    
+    mascot_name = parts[1].strip()
+    await state.update_data(report_mascot=mascot_name)
+    await ReportStates.WAITING_FOR_REPORT_CONTENT.set()
+    
+    text = (
+        f"蓝精灵「报告模版」\n"
+        f"点击下方模版内容，即可复制报告模版\n"
+        f"如需匿名，请在报告内容任意位置打一个 **我要匿名**\n\n"
+        f"👇👇👇👇👇👇👇👇\n\n"
+        f"`{REPORT_TEMPLATE.format(mascot_name=mascot_name)}`"
+    )
+    await message.answer(text, parse_mode="Markdown")
+
+@dp.message_handler(state=ReportStates.WAITING_FOR_REPORT_CONTENT, content_types=[types.ContentType.TEXT, types.ContentType.PHOTO, types.ContentType.VIDEO])
+async def process_report_content(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    mascot_name = data.get("report_mascot", "未知")
+    
+    content = message.text or message.caption or ""
+    if not content:
+        await message.reply("⚠️ 请发送填好模版的文字内容（可附带图片/视频）。")
+        return
+
+    media_id = None
+    media_type = None
+    if message.photo:
+        media_id = message.photo[-1].file_id
+        media_type = "photo"
+    elif message.video:
+        media_id = message.video.file_id
+        media_type = "video"
+
+    # 匿名检测
+    is_anonymous = "我要匿名" in content
+    sender_name = "匿名鹅友" if is_anonymous else message.from_user.full_name
+    content = content.replace("我要匿名", "").strip()
+
+    # 保存到数据库
+    report_id = db.add_report(message.from_user.id, mascot_name, content, media_id, media_type)
+
+    # 推送到报告频道
+    report_channel = db.get_setting("REPORT_CHANNEL", DefaultConfig.REPORT_CHANNEL)
+    if report_channel:
+        prefix = f"👤 **来自: {sender_name}**\n\n"
+        report_text = prefix + content
+        sent_msg = None
+        try:
+            kb = get_report_kb(report_id)
+            if media_type == "photo":
+                sent_msg = await bot.send_photo(report_channel, media_id, caption=report_text, reply_markup=kb, parse_mode="Markdown")
+            elif media_type == "video":
+                sent_msg = await bot.send_video(report_channel, media_id, caption=report_text, reply_markup=kb, parse_mode="Markdown")
+            else:
+                sent_msg = await bot.send_message(report_channel, report_text, reply_markup=kb, parse_mode="Markdown")
+            
+            if sent_msg:
+                db.update_report_msg(report_id, sent_msg.message_id)
+        except Exception as e:
+            logging.error(f"Failed to send report to channel: {e}")
+
+    await message.reply("✅ 报告已提交，感谢您的真实反馈！\n积分奖励已到账（构思中）。")
     await state.finish()
+
+@dp.callback_query_handler(text_startswith="vote_", state="*")
+async def vote_handler(call: types.CallbackQuery):
+    parts = call.data.split("_")
+    action = parts[1] # like / dislike
+    report_id = int(parts[2])
+    
+    res = db.toggle_vote(report_id, call.from_user.id, is_like=(action=="like"))
+    if not res:
+        await call.answer("报告不存在")
+        return
+    
+    likes, dislikes = res
+    try:
+        await call.message.edit_reply_markup(reply_markup=get_report_kb(report_id, likes, dislikes))
+        await call.answer(f"投票成功！当前：👍{likes} 👎{dislikes}")
+    except Exception as e:
+        if "message is not modified" not in str(e).lower():
+            await call.answer("由于消息过旧，无法更新按钮显示，但投票已记录。")
+        else:
+            await call.answer("您已点击过。")
+
+@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), state="*")
+async def view_reports_msg(message: types.Message, state: FSMContext = None):
+    if state: await state.finish()
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("📝 请输入要查看的小精灵名字，例如：`看报告 欣欣宝`")
+        return
+    
+    mascot_name = parts[1].strip()
+    reports = db.get_reports_by_mascot(mascot_name)
+    
+    if not reports:
+        await message.answer(f"🔍 暂无关于 `#{mascot_name}` 的实操报告，快去提交第一份吧！", parse_mode="Markdown")
+        return
+
+    await message.answer(f"📚 为您找到关于 `#{mascot_name}` 的最新/精选报告：", parse_mode="Markdown")
+    
+    for r in reports:
+        likes = len(r['likes'])
+        dislikes = len(r['dislikes'])
+        prefix = f"👤 **报告人ID: {r['user_id']}** (👍{likes} 👎{dislikes})\n\n"
+        text = prefix + r['content']
+        kb = get_report_kb(r['id'], likes, dislikes)
+        
+        try:
+            if r['media_type'] == "photo":
+                await message.answer_photo(r['media_id'], caption=text, reply_markup=kb, parse_mode="Markdown")
+            elif r['media_type'] == "video":
+                await message.answer_video(r['media_id'], caption=text, reply_markup=kb, parse_mode="Markdown")
+            else:
+                await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+        except Exception as e:
+            logging.error(f"Error displaying report {r['id']}: {e}")
+
+# --- 原有的回调触发 ---
+@dp.callback_query_handler(text="report", state="*")
+async def start_report_callback(call: types.CallbackQuery, state: FSMContext = None):
+    if state: await state.finish()
+    await call.message.answer("📝 请输入 `报告 小精灵名字` 来开始提交报告。\n例如：`报告 欣欣宝`")
+    await call.answer()

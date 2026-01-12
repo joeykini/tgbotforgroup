@@ -41,4 +41,5 @@ class AdminStates(StatesGroup):
     WAITING_FOR_REPORT_CHANNEL = State()
 
 class ReportStates(StatesGroup):
-    WAITING_FOR_CONTENT = State()
+    WAITING_FOR_REPORT_NAME = State()
+    WAITING_FOR_REPORT_CONTENT = State()

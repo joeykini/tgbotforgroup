@@ -138,6 +138,21 @@ class Database:
             if 'page' not in cols:
                 cursor.execute("ALTER TABLE resources ADD COLUMN page INTEGER DEFAULT 1")
             
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    resource_name TEXT,
+                    content TEXT,
+                    media_id TEXT,
+                    media_type TEXT,
+                    likes TEXT DEFAULT '[]', -- JSON list of user_ids
+                    dislikes TEXT DEFAULT '[]', -- JSON list of user_ids
+                    msg_id INTEGER, -- message_id in channel
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             conn.commit()
 
     # --- Resources (Master Grid) Methods ---
@@ -380,5 +395,74 @@ class Database:
                 "total": row[3], "daily": row[4], "monthly": row[5],
                 "group": row[6], "private": row[7], "points": row[8]
             }
+
+    # --- Reports Methods ---
+    def add_report(self, user_id, resource_name, content, media_id=None, media_type=None):
+        with self._get_conn() as conn:
+            cursor = conn.execute("""
+                INSERT INTO reports (user_id, resource_name, content, media_id, media_type)
+                VALUES (?, ?, ?, ?, ?)
+            """, (user_id, resource_name, content, media_id, media_type))
+            return cursor.lastrowid
+
+    def update_report_msg(self, report_id, msg_id):
+        with self._get_conn() as conn:
+            conn.execute("UPDATE reports SET msg_id = ? WHERE id = ?", (msg_id, report_id))
+
+    def get_report(self, report_id):
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
+            if not row: return None
+            return {
+                "id": row[0], "user_id": row[1], "resource_name": row[2],
+                "content": row[3], "media_id": row[4], "media_type": row[5],
+                "likes": json.loads(row[6]), "dislikes": json.loads(row[7]),
+                "msg_id": row[8]
+            }
+
+    def toggle_vote(self, report_id, user_id, is_like=True):
+        """记录投票，同一人只能二选一"""
+        report = self.get_report(report_id)
+        if not report: return None
+        
+        likes = set(report['likes'])
+        dislikes = set(report['dislikes'])
+        
+        if is_like:
+            if user_id in likes:
+                likes.remove(user_id)
+            else:
+                likes.add(user_id)
+                if user_id in dislikes: dislikes.remove(user_id)
+        else:
+            if user_id in dislikes:
+                dislikes.remove(user_id)
+            else:
+                dislikes.add(user_id)
+                if user_id in likes: likes.remove(user_id)
+        
+        with self._get_conn() as conn:
+            conn.execute("UPDATE reports SET likes = ?, dislikes = ? WHERE id = ?", 
+                         (json.dumps(list(likes)), json.dumps(list(dislikes)), report_id))
+            
+        return len(likes), len(dislikes)
+
+
+    def get_reports_by_mascot(self, mascot_name, limit=5):
+        with self._get_conn() as conn:
+            cursor = conn.execute("""
+                SELECT * FROM reports WHERE resource_name = ? 
+                ORDER BY (json_array_length(likes) - json_array_length(dislikes)) DESC, created_at DESC 
+                LIMIT ?
+            """, (mascot_name, limit))
+            return [self._parse_report_row(r) for r in cursor.fetchall()]
+
+    def _parse_report_row(self, row):
+        return {
+            "id": row[0], "user_id": row[1], "resource_name": row[2],
+            "content": row[3], "media_id": row[4], "media_type": row[5],
+            "likes": json.loads(row[6]), "dislikes": json.loads(row[7]),
+            "msg_id": row[8], "created_at": row[9]
+        }
 
     # (Obsolete Methods Consolidated Above)

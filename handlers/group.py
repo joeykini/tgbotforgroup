@@ -156,10 +156,42 @@ async def group_keyword_handler(message: types.Message):
         "小鹅，期待与您相约;祝\"旅途\"愉快!感谢支持"
     )
     
-    bot_username = (await bot.get_me()).username
-    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("👊 😘立即启动😘 👊", url=f"https://t.me/{bot_username}?start=v"))
     sent_msg = await message.reply(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     await delete_later(sent_msg, 120)
+
+@dp.message_handler(lambda m: m.text and m.text.startswith("报告"), chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+async def group_report_trigger(message: types.Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        return # 忽略只有 "报告" 的消息，或者提示
+    
+    mascot_name = parts[1].strip()
+    bot_info = await bot.get_me()
+    # 构造深层链接跳转私聊并自动带出报告指令
+    # 注意：start 参数不能包含空格，所以这里可能需要用下划线或仅传名字
+    deep_link = f"https://t.me/{bot_info.username}?start=report_{mascot_name}"
+    
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("📝 点击此处私聊提交报告", url=deep_link))
+    sent_msg = await message.reply(f"🔍 收到您的反馈请求：`#{mascot_name}`\n请点击下方按钮进入私聊获取模版。", 
+                                   parse_mode="Markdown", reply_markup=kb)
+    await delete_later(sent_msg, 60)
+    await delete_later(message, 60)
+
+@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+async def group_view_reports_trigger(message: types.Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2: return
+    
+    mascot_name = parts[1].strip()
+    bot_info = await bot.get_me()
+    # 构造深层链接跳转私聊并查看报告
+    deep_link = f"https://t.me/{bot_info.username}?start=view_report_{mascot_name}"
+    
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("📚 点击此处私聊查看报告", url=deep_link))
+    sent_msg = await message.reply(f"🔍 正在查询 `#{mascot_name}` 的实操报告...\n请点击下方按钮进入私聊查看。", 
+                                   parse_mode="Markdown", reply_markup=kb)
+    await delete_later(sent_msg, 60)
+    await delete_later(message, 60)
 
 # 5. 用户记录 & 防链接监控
 @dp.message_handler(content_types=types.ContentType.ANY, chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
