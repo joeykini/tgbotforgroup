@@ -156,6 +156,9 @@ async def group_keyword_handler(message: types.Message):
         "小鹅，期待与您相约;祝\"旅途\"愉快!感谢支持"
     )
     
+    bot_username = (await bot.get_me()).username
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("👊 😘立即启动😘 👊", url=f"https://t.me/{bot_username}?start=v"))
+    
     sent_msg = await message.reply(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
     await delete_later(sent_msg, 120)
 
