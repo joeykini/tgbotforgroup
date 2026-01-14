@@ -112,7 +112,7 @@ def get_welcome_text(user_full_name, user_id):
         "雅俗共赏:行九浅而一深，待十侯而方毕\n"
         "小鹅状态: ❤️可约     😈 月休\n"
         f"安全须知1、[新人说明]({link_newbie}) 2、[群规及操作]({link_rules})\n\n"
-        "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
+        "小鹅，期待与您相约;祝\"旅途\"愉快!感谢支持"
     )
 
 @dp.message_handler(commands=['start'], chat_type=types.ChatType.PRIVATE)
@@ -221,7 +221,7 @@ async def region_filter_handler(call: types.CallbackQuery, state: FSMContext = N
         pass
     await call.answer()
 
-# --- 个人中心 (Butterfly: 我的蓝精灵) ---
+# --- 个人中心 (Butterfly: 我的麻辣鹅) ---
 @dp.callback_query_handler(text="my_home_stats", state="*")
 async def my_stats_handler(call: types.CallbackQuery, state: FSMContext = None):
     if state: await state.finish()
@@ -289,7 +289,7 @@ async def stats_sub_handler(call: types.CallbackQuery, state: FSMContext = None)
             f"您共提交了 **{count}** 份实操反馈。\n\n"
         )
         if recent:
-            text += "**最近报告的精灵：**\n"
+            text += "**最近报告的小鹅：**\n"
             for name in recent:
                 text += f"- #{name}\n"
         else:
@@ -336,13 +336,13 @@ async def check_in_handler(call: types.CallbackQuery):
 @dp.callback_query_handler(text="attr_filter")
 async def attr_filter_handler(call: types.CallbackQuery):
     text = (
-        "蓝精灵「精灵属性」\n\n"
-        "约课模式、精灵类型、收录排序、报告排序、好评排序等等等\n"
+        "麻辣鹅「小鹅属性」\n\n"
+        "约课模式、小鹅类型、收录排序、报告排序、好评排序等等等\n"
         "新人排序:收录时间，倒序分组\n"
         "报告:最多报告，排名靠前\n"
         "好评:近周期内好评数排序\n"
-        "精灵类型:待反馈，以蓝友实操，验码反馈\n"
-        "精灵指数:综合6个维度、通算法计算得到某一个精灵的指数（构思中）\n"
+        "小鹅类型:待反馈，以鹅友实操，验码反馈\n"
+        "小鹅指数:综合6个维度、通算法计算得到某一个小鹅的指数（构思中）\n"
         "持续整理中"
     )
     
@@ -361,7 +361,7 @@ async def attr_filter_handler(call: types.CallbackQuery):
            InlineKeyboardButton("💸 13z-16z", callback_data="price_3"),
            InlineKeyboardButton("💸 17z+", callback_data="price_4"))
            
-    kb.row(InlineKeyboardButton("🌏 精灵区域", callback_data="region_list"),
+    kb.row(InlineKeyboardButton("🌏 小鹅区域", callback_data="region_list"),
            InlineKeyboardButton("⬅️ 返 回", callback_data="welcome_page_1"))
     
     await call.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
@@ -391,7 +391,7 @@ async def back_to_start_handler(call: types.CallbackQuery, state: FSMContext = N
         "雅俗共赏:行九浅而一深，待十侯而方毕\n"
         "小鹅状态: ❤️可约     😈 月休\n"
         f"安全须知1、[新人说明](https://t.me/huaianbendi/6) 2、[群规及操作]({link_rules})\n\n"
-        "小精灵，期待与您相约;祝\"旅途\"愉快!感谢支持"
+        "小鹅，期待与您相约;祝\"旅途\"愉快!感谢支持"
     )
     
     await reset_message_timer(call.message)
@@ -459,7 +459,7 @@ async def start_report_msg(message: types.Message, state: FSMContext):
     if state: await state.finish()
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.answer("📝 请输入要报告的小精灵名字，例如：`报告 欣欣宝`", parse_mode="Markdown")
+        await message.answer("📝 请输入要报告的小鹅名字，例如：`报告 欣欣宝`", parse_mode="Markdown")
         return
     
     mascot_name = parts[1].strip()
@@ -467,7 +467,7 @@ async def start_report_msg(message: types.Message, state: FSMContext):
     await ReportStates.WAITING_FOR_REPORT_CONTENT.set()
     
     text = (
-        f"蓝精灵「报告模版」\n"
+        f"麻辣鹅「报告模版」\n"
         f"点击下方模版内容，即可复制报告模版\n"
         f"如需匿名，请在报告内容任意位置打一个 **我要匿名**\n\n"
         f"👇👇👇👇👇👇👇👇\n\n"
@@ -552,7 +552,7 @@ async def view_reports_msg(message: types.Message, state: FSMContext = None):
     if state: await state.finish()
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.answer("📝 请输入要查看的小精灵名字，例如：`看报告 欣欣宝`")
+        await message.answer("📝 请输入要查看的小鹅名字，例如：`看报告 欣欣宝`")
         return
     
     mascot_name = parts[1].strip()
@@ -585,5 +585,5 @@ async def view_reports_msg(message: types.Message, state: FSMContext = None):
 @dp.callback_query_handler(text="report", state="*")
 async def start_report_callback(call: types.CallbackQuery, state: FSMContext = None):
     if state: await state.finish()
-    await call.message.answer("📝 请输入 `报告 小精灵名字` 来开始提交报告。\n例如：`报告 欣欣宝`")
+    await call.message.answer("📝 请输入 `报告 小鹅名字` 来开始提交报告。\n例如：`报告 欣欣宝`")
     await call.answer()
