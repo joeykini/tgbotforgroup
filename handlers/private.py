@@ -55,6 +55,8 @@ def get_resource_grid_keyboard(page=1):
     
     # 底部导航栏
     if page == 1:
+        link_vpn = db.get_setting("LINK_VPN", DefaultConfig.LINK_VPN)
+        kb.row(InlineKeyboardButton("✈️ VPN推荐", url=link_vpn))
         kb.row(
             InlineKeyboardButton("🦋 我的统计", callback_data="my_home_stats"),
             InlineKeyboardButton("🐕 区域页 ❯", callback_data="welcome_page_2")

@@ -25,3 +25,4 @@ class DefaultConfig:
     LINK_SERVICE = "https://t.me/egchabot"      # 客服/鹅神 (指向新Bot)
     LINK_HUAIAN = "https://t.me/huaianbendi"      # 淮安榜
     LINK_GROUP = "https://t.me/hamalae8"          # 群组
+    LINK_VPN = "https://t.me/vpn_recommend"       # VPN推荐
