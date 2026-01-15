@@ -17,41 +17,52 @@ async def welcome_new_member(message: types.Message):
         db.add_group(message.chat.id, message.chat.title)
 
     if not db.get_setting("WELCOME_ENABLED", DefaultConfig.WELCOME_ENABLED): return
-    for member in message.new_chat_members:
-        if member.id == bot.id:
-            await message.reply("👋 大家好！我是群管机器人。如果是管理员，请给我管理员权限以便我正常工作。")
-        else:
-            # 强制硬编码链接
-            link_newbie = "https://t.me/huaianbendi/6"
-            
-            link_rules = db.get_setting("LINK_RULES", DefaultConfig.LINK_RULES) or DefaultConfig.LINK_RULES
-            link_safety = db.get_setting("LINK_SAFETY", DefaultConfig.LINK_SAFETY) or DefaultConfig.LINK_SAFETY
-            link_terms = db.get_setting("LINK_TERMS", DefaultConfig.LINK_TERMS) or DefaultConfig.LINK_TERMS
-            link_group = db.get_setting("LINK_GROUP", DefaultConfig.LINK_GROUP) or DefaultConfig.LINK_GROUP
-            link_service = db.get_setting("LINK_SERVICE", DefaultConfig.LINK_SERVICE) or DefaultConfig.LINK_SERVICE
 
-            # 匿名管理员处理
-            if member.id == 1087968824: # GroupAnonymousBot ID
-                name_link = "这位鹅友"
-            else:
-                name_link = f"[{member.full_name}](tg://user?id={member.id})"
+    # 如果是管理员/群主拉人进来，不需要欢迎
+    if await check_group_admin(message):
+        # 仍然可以删除进群服务消息（可选，通常群组会比较整洁）
+        await delete_later(message, 120)
+        return
+
+    for member in message.new_chat_members:
+        # 跳过所有机器人
+        if member.is_bot:
+            # 如果是本机器人被拉入，发送一个简单的招呼
+            if member.id == bot.id:
+                await message.reply("👋 大家好！我是群管机器人。如果是管理员，请给我管理员权限以便我正常工作。")
+            continue
             
-            text = (
-                "欢迎使用麻辣鹅系统\n"
-                f"    {name_link} ，鹅友，您好!\n"
-                f"🤗欢迎来到[麻辣鹅圈子]({link_group})，立即开始你的麻辣探索之旅吧；\n"
-                f"    小鹅均为已验证资源!对眼有感即可冲，放心\"旅途\"，勿需多虑!\n"
-                f"旅前须知:联系方式无条件获取，及时验证，请勿鸽人，素质诚信出击;[联系鹅神]({link_service})。\n"
-                f"温馨提示:切勿相信任何非管理私聊，如有请避免踩雷[踩雷反馈]({link_service})\n"
-                "雅俗共赏:行九浅而一深，待十侯而方毕\n"
-                "小鹅状态: ♥️可约     😈 月休\n"
-                f"安全须知1、[新人说明]({link_newbie}) 2、[群规及操作]({link_rules})\n\n"
-                "小鹅，期待与您相约;祝\"旅途\"愉快!感谢支持"
-            )
-            bot_username = (await bot.get_me()).username
-            kb = InlineKeyboardMarkup().add(InlineKeyboardButton("👊 😘立即启动😘 👊", url=f"https://t.me/{bot_username}?start=v"))
-            sent_msg = await message.reply(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
-            await delete_later(sent_msg, 120)
+        # 强制硬编码链接
+        link_newbie = "https://t.me/huaianbendi/6"
+        
+        link_rules = db.get_setting("LINK_RULES", DefaultConfig.LINK_RULES) or DefaultConfig.LINK_RULES
+        link_safety = db.get_setting("LINK_SAFETY", DefaultConfig.LINK_SAFETY) or DefaultConfig.LINK_SAFETY
+        link_terms = db.get_setting("LINK_TERMS", DefaultConfig.LINK_TERMS) or DefaultConfig.LINK_TERMS
+        link_group = db.get_setting("LINK_GROUP", DefaultConfig.LINK_GROUP) or DefaultConfig.LINK_GROUP
+        link_service = db.get_setting("LINK_SERVICE", DefaultConfig.LINK_SERVICE) or DefaultConfig.LINK_SERVICE
+
+        # 匿名管理员处理
+        if member.id == 1087968824: # GroupAnonymousBot ID
+            name_link = "这位鹅友"
+        else:
+            name_link = f"[{member.full_name}](tg://user?id={member.id})"
+        
+        text = (
+            "欢迎使用麻辣鹅系统\n"
+            f"    {name_link} ，鹅友，您好!\n"
+            f"🤗欢迎来到[麻辣鹅圈子]({link_group})，立即开始你的麻辣探索之旅吧；\n"
+            f"    小鹅均为已验证资源!对眼有感即可冲，放心\"旅途\"，勿需多虑!\n"
+            f"旅前须知:联系方式无条件获取，及时验证，请勿鸽人，素质诚信出击;[联系鹅神]({link_service})。\n"
+            f"温馨提示:切勿相信任何非管理私聊，如有请避免踩雷[踩雷反馈]({link_service})\n"
+            "雅俗共赏:行九浅而一深，待十侯而方毕\n"
+            "小鹅状态: ♥️可约     😈 月休\n"
+            f"安全须知1、[新人说明]({link_newbie}) 2、[群规及操作]({link_rules})\n\n"
+            "小鹅，期待与您相约;祝\"旅途\"愉快!感谢支持"
+        )
+        bot_username = (await bot.get_me()).username
+        kb = InlineKeyboardMarkup().add(InlineKeyboardButton("👊 😘立即启动😘 👊", url=f"https://t.me/{bot_username}?start=v"))
+        sent_msg = await message.reply(text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
+        await delete_later(sent_msg, 120)
             
     # 2分钟后删除进群服务消息
     await delete_later(message, 120)

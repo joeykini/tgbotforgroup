@@ -33,8 +33,8 @@ class MessageTimerManager:
             await message.delete()
         except asyncio.CancelledError:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug(f"Failed to delete message {message.message_id} in chat {message.chat.id}: {e}")
         finally:
             key = (message.chat.id, message.message_id)
             if self.timers.get(key) == asyncio.current_task():
