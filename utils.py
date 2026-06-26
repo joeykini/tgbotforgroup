@@ -53,14 +53,21 @@ async def reset_message_timer(message: types.Message, delay: int = 120):
     await timer_manager.start_timer(message, delay)
 
 def is_admin(user_id):
+    """同步快捷判断：仅超级管理员。完整权限请用 check_bot_admin。"""
     return user_id == DefaultConfig.ADMIN_ID
 
+async def is_bot_admin(user_id):
+    from filters import check_bot_admin
+    return await check_bot_admin(user_id)
+
 async def check_group_admin(message: types.Message):
-    """检查命令发送者是否为群管理员"""
+    """检查命令发送者是否为群管理员或 Bot 后台管理员。"""
     if message.chat.type == 'private':
-        return False
+        return await is_bot_admin(message.from_user.id)
+    if await is_bot_admin(message.from_user.id):
+        return True
     member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    return member.is_chat_admin() or is_admin(message.from_user.id)
+    return member.is_chat_admin()
 
 async def check_subscription(user_id):
     """检查用户是否关注了所有必选频道"""

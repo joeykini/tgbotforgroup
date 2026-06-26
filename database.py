@@ -82,7 +82,8 @@ class Database:
                 CREATE TABLE IF NOT EXISTS keyword_replies (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     keyword TEXT UNIQUE,
-                    reply_content TEXT
+                    reply_content TEXT,
+                    is_auto INTEGER DEFAULT 0
                 )
             """)
             cursor.execute("""
@@ -137,6 +138,13 @@ class Database:
             cols = [info[1] for info in cursor.fetchall()]
             if 'page' not in cols:
                 cursor.execute("ALTER TABLE resources ADD COLUMN page INTEGER DEFAULT 1")
+            if 'source' not in cols:
+                cursor.execute("ALTER TABLE resources ADD COLUMN source TEXT DEFAULT 'manual'")
+
+            cursor.execute("PRAGMA table_info(keyword_replies)")
+            kw_cols = [info[1] for info in cursor.fetchall()]
+            if 'is_auto' not in kw_cols:
+                cursor.execute("ALTER TABLE keyword_replies ADD COLUMN is_auto INTEGER DEFAULT 0")
             
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reports (
@@ -164,13 +172,29 @@ class Database:
             conn.commit()
 
     # --- Resources (Master Grid) Methods ---
-    def add_resource(self, name, url, status=1, price=0, region=None, tags=None, res_type=None, page=1):
+    def add_resource(self, name, url, status=1, price=0, region=None, tags=None, res_type=None, page=1, source='manual'):
         with self._get_conn() as conn:
             tags_json = json.dumps(tags or [])
             conn.execute("""
-                INSERT INTO resources (name, url, status, price, region, tags, type, page) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (name, url, status, price, region, tags_json, res_type, page))
+                INSERT INTO resources (name, url, status, price, region, tags, type, page, source) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, url, status, price, region, tags_json, res_type, page, source))
+
+    def replace_channel_resources(self, teachers):
+        """用频道数据全量替换自动同步的资源。"""
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM resources WHERE source = 'channel'")
+            for t in teachers:
+                page = 1
+                tags_json = json.dumps([f"price_{t['price_tier']}"])
+                conn.execute("""
+                    INSERT INTO resources (name, url, status, price, region, tags, type, page, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'channel')
+                """, (
+                    t["name"], t["url"], t.get("status", 1), t["price"],
+                    t["region"], tags_json, t.get("price_tier"), page,
+                ))
+            conn.commit()
 
     def delete_resource(self, res_id):
         with self._get_conn() as conn:
@@ -182,7 +206,7 @@ class Database:
 
     def get_resources(self, page=None, limit=50, offset=0, filters=None):
         with self._get_conn() as conn:
-            sql = "SELECT id, name, url, status, price, region, tags, type, page FROM resources"
+            sql = "SELECT id, name, url, status, price, region, tags, type, page, source FROM resources"
             params = []
             clauses = []
             if page:
@@ -207,7 +231,8 @@ class Database:
             "id": row[0], "name": row[1], "url": row[2],
             "status": row[3], "price": row[4], "region": row[5],
             "tags": json.loads(row[6]) if row[6] else [],
-            "type": row[7], "page": row[8]
+            "type": row[7], "page": row[8],
+            "source": row[9] if len(row) > 9 else "manual",
         }
 
     # --- Scheduled Ads Methods ---
@@ -273,9 +298,24 @@ class Database:
         }
 
     # --- Keyword Reply Methods ---
-    def add_keyword_reply(self, keyword, reply_content):
+    def add_keyword_reply(self, keyword, reply_content, is_auto=False):
         with self._get_conn() as conn:
-            conn.execute("INSERT OR REPLACE INTO keyword_replies (keyword, reply_content) VALUES (?, ?)", (keyword, reply_content))
+            conn.execute(
+                "INSERT OR REPLACE INTO keyword_replies (keyword, reply_content, is_auto) VALUES (?, ?, ?)",
+                (keyword, reply_content, 1 if is_auto else 0),
+            )
+
+    def replace_auto_keywords(self, keywords: dict):
+        """keywords: {trigger: content}，全量替换自动关键词。"""
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM keyword_replies WHERE is_auto = 1")
+            for keyword, content in keywords.items():
+                trigger = keyword.replace("__auto__", "")
+                conn.execute(
+                    "INSERT INTO keyword_replies (keyword, reply_content, is_auto) VALUES (?, ?, 1)",
+                    (trigger, content),
+                )
+            conn.commit()
 
     def delete_keyword_reply(self, keyword_id):
         with self._get_conn() as conn:
@@ -283,15 +323,18 @@ class Database:
 
     def get_all_keywords(self):
         with self._get_conn() as conn:
-            cursor = conn.execute("SELECT id, keyword, reply_content FROM keyword_replies")
-            return [{"id": row[0], "keyword": row[1], "reply_content": row[2]} for row in cursor.fetchall()]
+            cursor = conn.execute("SELECT id, keyword, reply_content, is_auto FROM keyword_replies")
+            return [
+                {"id": row[0], "keyword": row[1], "reply_content": row[2], "is_auto": bool(row[3])}
+                for row in cursor.fetchall()
+            ]
 
     def get_keyword_reply(self, text):
-        """查找匹配的关键词回复"""
-        keywords = self.get_all_keywords()
+        """查找匹配的关键词回复（长关键词优先）。"""
+        keywords = sorted(self.get_all_keywords(), key=lambda k: len(k["keyword"]), reverse=True)
         for kw in keywords:
-            if kw['keyword'] in text:
-                return kw['reply_content']
+            if kw["keyword"] in text:
+                return kw["reply_content"]
         return None
 
     # (Deleted obsolete Start Menu methods)

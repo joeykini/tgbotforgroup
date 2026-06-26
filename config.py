@@ -3,6 +3,9 @@ class DefaultConfig:
     API_TOKEN = '8479273528:AAFA6c52AuxfXY3nd_nnAuFlwKQqxbfDrlI'
     ADMIN_ID = 6799513564
     DB_NAME = "bot_data.db"
+
+    # 拥有 Bot 后台权限的频道/群组（其管理员均可操作 /settings）
+    ADMIN_CHATS = ["@huaianbendi", "@hamalae8"]
     
     # 默认动态配置
     AD_INTERVAL = 8 * 60 * 60
@@ -26,3 +29,8 @@ class DefaultConfig:
     LINK_HUAIAN = "https://t.me/huaianbendi"      # 淮安榜
     LINK_GROUP = "https://t.me/hamalae8"          # 群组
     LINK_VPN = "https://t.me/huaianbendi/25"       # VPN推荐
+
+    # 频道同步
+    SYNC_CHANNEL = "huaianbendi"
+    SYNC_INTERVAL = 4 * 60 * 60  # 4小时
+    ANTI_BOT_ENABLED = True

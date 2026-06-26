@@ -1,10 +1,21 @@
 import asyncio
+import logging
 from aiogram import executor
-from loader import dp
+from loader import dp, db
 import handlers
+from scheduler import scheduled_ad_task, scheduled_channel_sync_task
+from channel_sync import sync_channel_to_db
 
 async def on_startup(dispatcher):
     print("Bot is starting...")
+    # 启动时立即同步一次，再进入定时轮询
+    try:
+        stats = sync_channel_to_db(db)
+        print(f"频道同步完成: {stats['count']} 位老师")
+    except Exception as e:
+        logging.error("启动同步失败: %s", e)
+    asyncio.create_task(scheduled_ad_task())
+    asyncio.create_task(scheduled_channel_sync_task())
 
 async def on_shutdown(dispatcher):
     print("Bot is shutting down...")

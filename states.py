@@ -39,6 +39,7 @@ class AdminStates(StatesGroup):
     WAITING_FOR_KEYWORD_REPLY = State()
     
     WAITING_FOR_REPORT_CHANNEL = State()
+    WAITING_FOR_SYNC_INTERVAL = State()
 
 class ReportStates(StatesGroup):
     WAITING_FOR_REPORT_NAME = State()

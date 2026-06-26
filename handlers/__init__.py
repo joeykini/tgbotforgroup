@@ -1,8 +1,8 @@
 from loader import dp
-import handlers.private
-import handlers.group
-import handlers.admin
+from filters import register_admin_filter
 
 def setup_handlers():
-    # 这里的导入实际上就已经完成了注册，因为 aiogram 的装饰器在模块导入时生效
-    pass
+    register_admin_filter(dp)
+    import handlers.private
+    import handlers.group
+    import handlers.admin
