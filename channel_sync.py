@@ -72,7 +72,8 @@ def fetch_channel_teachers(channel: str = "huaianbendi", max_pages: int = 15) ->
         parser_blocks = _extract_message_blocks(page_html)
         for block in parser_blocks:
             teacher = parse_teacher_block(block)
-            if teacher:
+            if teacher and teacher["name"] not in teachers_by_name:
+                # 从最新帖往旧帖翻页，同名只保留最先出现的（即最新一条）
                 teachers_by_name[teacher["name"]] = teacher
 
         before = _extract_before_link(page_html)
@@ -119,13 +120,24 @@ def parse_teacher_block(text: str):
 
     price_m = re.search(r"一次价格[:：]\s*(\S+)", text)
     region_m = re.search(r"地区[:：]\s*(\S+)", text)
-    channel_m = re.search(r"频道[:：]\s*(https?://t\.me/\S+|@\S+)", text, re.MULTILINE)
+    # 优先使用「电报」后的个人账号，其次才用「频道」链接
+    telegram_m = re.search(r"电报[:：]\s*\n?\s*(@?[A-Za-z0-9_]+)", text)
+    channel_m = re.search(r"频道[:：]\s*\n?\s*(https?://t\.me/\S+|@[A-Za-z0-9_]+)", text)
 
     price = parse_price(price_m.group(1) if price_m else "")
     region = normalize_region(region_m.group(1) if region_m else "")
-    url = channel_m.group(1) if channel_m else ""
-    if url.startswith("@"):
-        url = f"https://t.me/{url.lstrip('@')}"
+
+    url = ""
+    telegram = ""
+    if telegram_m:
+        telegram = telegram_m.group(1).strip()
+        if not telegram.startswith("@"):
+            telegram = f"@{telegram}"
+        url = f"https://t.me/{telegram.lstrip('@')}"
+    elif channel_m:
+        url = channel_m.group(1).strip()
+        if url.startswith("@"):
+            url = f"https://t.me/{url.lstrip('@')}"
 
     if not url:
         return None
@@ -136,13 +148,15 @@ def parse_teacher_block(text: str):
         "price_tier": get_price_tier(price),
         "region": region,
         "url": url,
+        "telegram": telegram,
         "status": 1,
     }
 
 
 def _format_teacher_line(t: dict) -> str:
     price_z = t["price"] // 100 if t["price"] else "?"
-    return f"❤️ {t['name']} ({price_z}z) → {t['url']}"
+    contact = t.get("telegram") or t["url"]
+    return f"❤️ {t['name']} ({price_z}z) → {contact}"
 
 
 def build_region_keyword_content(region: str, teachers: list) -> str:
