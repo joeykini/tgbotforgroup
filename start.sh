@@ -6,9 +6,22 @@ else
     PYTHON_EXEC="python3"
 fi
 
+# 加载 .env（若存在）
+if [ -f ".env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source ./.env
+    set +a
+fi
+
 # 检查是否已经在运行
 if pgrep -f main.py > /dev/null; then
     echo "Bot 已经在运行中。"
+    exit 1
+fi
+
+if [ -z "$BOT_API_TOKEN" ] || [ -z "$BOT_ADMIN_ID" ]; then
+    echo "错误: 请先配置 .env（参考 .env.example）"
     exit 1
 fi
 
