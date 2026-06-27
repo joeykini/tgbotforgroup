@@ -1,20 +1,24 @@
 import asyncio
 import time
 from aiogram import types
-from aiogram.dispatcher import FSMContext
-from aiogram.types import ChatPermissions
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 
 from loader import dp, db, bot
 from config import DefaultConfig
 from utils import delete_later, check_group_admin
-from states import ReportStates
-from report_utils import REPORT_TEMPLATE, get_report_kb
 
 # ================= 群组管理逻辑 =================
 
 
 def _is_other_bot(message: types.Message) -> bool:
     return message.from_user and message.from_user.is_bot and message.from_user.id != bot.id
+
+
+async def _private_start_kb():
+    bot_username = (await bot.get_me()).username
+    return InlineKeyboardMarkup().add(
+        InlineKeyboardButton("😘 立即启动", url=f"https://t.me/{bot_username}?start=v")
+    )
 
 
 # 1. 入群处理：默认不自动踢 Bot，仅欢迎真人
@@ -46,13 +50,17 @@ async def welcome_new_member(message: types.Message):
         if not welcome_on:
             continue
 
+        bot_username = (await bot.get_me()).username
         name_link = "这位鹅友" if member.id == 1087968824 else f"[{member.full_name}](tg://user?id={member.id})"
         text = (
             f"👋 {name_link} 欢迎加入！\n"
             f"发送 **麻辣鹅** 获取 [淮安榜](https://t.me/huaianbendi) 实时资源\n"
-            f"发送区县名（如 `清江浦`）按地区查看"
+            f"或私聊 @{bot_username} 浏览完整列表"
         )
-        sent_msg = await message.reply(text, parse_mode="Markdown", disable_web_page_preview=True)
+        kb = await _private_start_kb()
+        sent_msg = await message.reply(
+            text, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True
+        )
         await delete_later(sent_msg, 120)
 
     await delete_later(message, 120)
@@ -171,83 +179,67 @@ async def group_keyword_handler(message: types.Message):
     db.add_group(message.chat.id, message.chat.title)
     reply_content = db.get_keyword_reply(message.text)
     if not reply_content:
-        reply_content = "🦢 发送 **麻辣鹅** 获取淮安榜资源\n发送区县名（如 `清江浦`）按地区查看"
+        bot_username = (await bot.get_me()).username
+        reply_content = (
+            "🦢 发送 **麻辣鹅** 获取淮安榜资源\n"
+            f"私聊 @{bot_username} 浏览完整列表"
+        )
 
+    kb = await _private_start_kb()
     sent_msg = await message.reply(
-        reply_content, parse_mode="Markdown", disable_web_page_preview=True
+        reply_content, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True
     )
     await delete_later(sent_msg, 300)
 
 
-@dp.message_handler(
-    lambda m: m.text and m.text.startswith("报告"),
-    chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP],
-    state="*",
-)
-async def group_report_start(message: types.Message, state: FSMContext):
+@dp.message_handler(lambda m: m.text and m.text.startswith("报告"), chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+async def group_report_trigger(message: types.Message):
     if _is_other_bot(message):
         return
 
-    if state:
-        await state.finish()
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("📝 请输入：`报告 小鹅名字`", parse_mode="Markdown")
         return
 
     mascot_name = parts[1].strip()
-    await state.update_data(report_mascot=mascot_name, target_chat=str(message.chat.id))
-    await ReportStates.WAITING_FOR_REPORT_CONTENT.set()
+    bot_info = await bot.get_me()
+    chat_id_str = str(message.chat.id).replace("-", "n")
+    deep_link = f"https://t.me/{bot_info.username}?start=report_{mascot_name}_{chat_id_str}"
 
-    text = (
-        f"麻辣鹅「报告模版」· #{mascot_name}\n"
-        f"请 **直接在本群** 发送填好的报告（可附图/视频）\n"
-        f"如需匿名，内容中加 **我要匿名**\n\n"
-        f"`{REPORT_TEMPLATE.format(mascot_name=mascot_name)}`"
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("📝 点击此处私聊提交报告", url=deep_link)
     )
-    sent_msg = await message.reply(text, parse_mode="Markdown")
-    await delete_later(sent_msg, 300)
+    sent_msg = await message.reply(
+        f"🔍 收到您的反馈请求：`#{mascot_name}`\n请点击下方按钮进入私聊获取模版。",
+        parse_mode="Markdown",
+        reply_markup=kb,
+    )
+    await delete_later(sent_msg, 60)
     await delete_later(message, 60)
 
 
-@dp.message_handler(
-    lambda m: m.text and m.text.startswith("看报告"),
-    chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP],
-    state="*",
-)
-async def group_view_reports(message: types.Message, state: FSMContext = None):
+@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+async def group_view_reports_trigger(message: types.Message):
     if _is_other_bot(message):
         return
 
-    if state:
-        await state.finish()
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
-        await message.reply("📝 请输入：`看报告 小鹅名字`")
         return
 
     mascot_name = parts[1].strip()
-    reports = db.get_reports_by_mascot(mascot_name)
-    if not reports:
-        sent = await message.reply(f"🔍 暂无 `#{mascot_name}` 的实操报告", parse_mode="Markdown")
-        await delete_later(sent, 120)
-        return
+    bot_info = await bot.get_me()
+    deep_link = f"https://t.me/{bot_info.username}?start=view_report_{mascot_name}"
 
-    await message.reply(f"📚 `#{mascot_name}` 的实操报告：", parse_mode="Markdown")
-    for r in reports:
-        likes = len(r["likes"])
-        dislikes = len(r["dislikes"])
-        text = f"👤 报告人ID: {r['user_id']} (👍{likes} 👎{dislikes})\n\n{r['content']}"
-        kb = get_report_kb(r["id"], likes, dislikes)
-        try:
-            if r["media_type"] == "photo":
-                await message.answer_photo(r["media_id"], caption=text, reply_markup=kb, parse_mode="Markdown")
-            elif r["media_type"] == "video":
-                await message.answer_video(r["media_id"], caption=text, reply_markup=kb, parse_mode="Markdown")
-            else:
-                await message.answer(text, reply_markup=kb, parse_mode="Markdown")
-        except Exception:
-            pass
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("📚 点击此处私聊查看报告", url=deep_link)
+    )
+    sent_msg = await message.reply(
+        f"🔍 正在查询 `#{mascot_name}` 的实操报告...\n请点击下方按钮进入私聊查看。",
+        parse_mode="Markdown",
+        reply_markup=kb,
+    )
+    await delete_later(sent_msg, 60)
     await delete_later(message, 60)
 
 
@@ -280,7 +272,8 @@ async def group_message_logger(message: types.Message):
     if message.text and "麻辣鹅" not in message.text:
         reply_content = db.get_keyword_reply(message.text)
         if reply_content:
+            kb = await _private_start_kb()
             sent_msg = await message.reply(
-                reply_content, parse_mode="Markdown", disable_web_page_preview=True
+                reply_content, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True
             )
             await delete_later(sent_msg, 300)

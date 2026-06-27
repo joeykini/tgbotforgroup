@@ -117,7 +117,7 @@ def get_welcome_text(user_full_name, user_id):
     )
 
 @dp.message_handler(commands=['start'], chat_type=types.ChatType.PRIVATE)
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
     # 记录私聊记录
     args = message.get_args()
     user_id = message.from_user.id
@@ -141,10 +141,23 @@ async def cmd_start(message: types.Message):
                 await bot.send_message(referrer_id, f"🎊 嘿！鹅友 {message.from_user.full_name} 通过您的链接开启了探索，您获得了 10 积分！")
             except: pass
 
-    # 报告请在本群操作，不再跳转私聊
-    if args and (args.startswith("report_") or args.startswith("view_report_")):
-        await message.reply("📝 请在群内发送 `报告 名字` 或 `看报告 名字`，无需私聊本 Bot。", parse_mode="Markdown")
-        return
+    # 处理报告深层链接（从群内跳转私聊）
+    if args:
+        if args.startswith("report_"):
+            parts = args.split("_")
+            mascot_name = parts[1]
+            target_chat = None
+            if len(parts) > 2:
+                target_chat = parts[2].replace("n", "-")
+            await state.update_data(report_mascot=mascot_name, target_chat=target_chat)
+            message.text = f"报告 {mascot_name}"
+            await start_report_msg(message, state)
+            return
+        if args.startswith("view_report_"):
+            mascot_name = args.replace("view_report_", "").strip()
+            message.text = f"看报告 {mascot_name}"
+            await view_reports_msg(message, state)
+            return
 
     # 检测关注状态
     not_joined = await check_subscription(user_id)
@@ -393,25 +406,62 @@ async def check_sub_handler(call: types.CallbackQuery):
 
 @dp.chat_member_handler()
 async def auto_check_sub(chat_member: types.ChatMemberUpdated):
-    """用户加入频道/群组时仅记录，不主动私聊发消息。"""
+    """用户加入频道/群组后，若已关注全部频道则私聊发送欢迎页。"""
     if chat_member.new_chat_member.status not in ["member", "administrator", "creator"]:
         return
+
     user_id = chat_member.from_user.id
     db.log_user(user_id, chat_member.from_user.username or chat_member.from_user.full_name, is_group=False)
 
+    not_joined = await check_subscription(user_id)
+    if not_joined:
+        return
+
+    success_text = get_welcome_text(chat_member.from_user.full_name, user_id)
+    kb = get_resource_grid_keyboard(page=1)
+    try:
+        await bot.send_message(
+            user_id,
+            "✅ 检测到您已加入所有必选频道/群组！\n\n" + success_text,
+            parse_mode="Markdown",
+            reply_markup=kb,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logging.error("Failed to send auto-welcome to %s: %s", user_id, e)
+
 from report_utils import REPORT_TEMPLATE, get_report_kb
 
-# ================= 报告逻辑（私聊仅查看，提交请在群内） =================
+# ================= 报告逻辑 =================
+
+@dp.message_handler(lambda m: m.text and m.text.startswith("报告"), chat_type=types.ChatType.PRIVATE, state="*")
+async def start_report_msg(message: types.Message, state: FSMContext):
+    saved = await state.get_data() if state else {}
+    target_chat = saved.get("target_chat")
+
+    if state:
+        await state.finish()
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("📝 请输入要报告的小鹅名字，例如：`报告 欣欣宝`", parse_mode="Markdown")
+        return
+
+    mascot_name = parts[1].strip()
+    await state.update_data(report_mascot=mascot_name, target_chat=target_chat)
+    await ReportStates.WAITING_FOR_REPORT_CONTENT.set()
+
+    text = (
+        f"麻辣鹅「报告模版」\n"
+        f"点击下方模版内容，即可复制报告模版\n"
+        f"如需匿名，请在报告内容任意位置打一个 **我要匿名**\n\n"
+        f"👇👇👇👇👇👇👇👇\n\n"
+        f"`{REPORT_TEMPLATE.format(mascot_name=mascot_name)}`"
+    )
+    await message.answer(text, parse_mode="Markdown")
 
 @dp.message_handler(state=ReportStates.WAITING_FOR_REPORT_CONTENT, content_types=[types.ContentType.TEXT, types.ContentType.PHOTO, types.ContentType.VIDEO])
 async def process_report_content(message: types.Message, state: FSMContext):
-    # 报告仅在群内提交，私聊不发
-    if message.chat.type == types.ChatType.PRIVATE:
-        await state.finish()
-        await message.reply("📝 请在群内发送 `报告 小鹅名字` 提交反馈，无需私聊本 Bot。", parse_mode="Markdown")
-        return
-
-    data = await state.get_data()
     mascot_name = data.get("report_mascot", "未知")
     
     content = message.text or message.caption or ""
@@ -481,7 +531,7 @@ async def vote_handler(call: types.CallbackQuery):
         else:
             await call.answer("您已点击过。")
 
-@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), chat_type=types.ChatType.PRIVATE, state="*")
+@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), state="*")
 async def view_reports_msg(message: types.Message, state: FSMContext = None):
     if state: await state.finish()
     parts = message.text.split(maxsplit=1)
@@ -518,5 +568,7 @@ async def view_reports_msg(message: types.Message, state: FSMContext = None):
 # --- 原有的回调触发 ---
 @dp.callback_query_handler(text="report", state="*")
 async def start_report_callback(call: types.CallbackQuery, state: FSMContext = None):
-    if state: await state.finish()
-    await call.answer("请在群内发送：报告 小鹅名字", show_alert=True)
+    if state:
+        await state.finish()
+    await call.message.answer("📝 请输入 `报告 小鹅名字` 来开始提交报告。\n例如：`报告 欣欣宝`")
+    await call.answer()
