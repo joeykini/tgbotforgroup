@@ -216,7 +216,7 @@ def build_mala_keyword_content(teachers: list) -> str:
     lines.extend([
         "\n按价格档查看：",
         "• `5z-8z` · `9z-12z` · `13z-16z` · `17z+`",
-        "\n私聊机器人可浏览完整按钮列表 👇",
+        "\n在群内发送区县名或价格档即可查看列表。"
     ])
     return "\n".join(lines)
 

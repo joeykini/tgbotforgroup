@@ -80,4 +80,4 @@ class DefaultConfig:
     # 频道同步
     SYNC_CHANNEL = os.getenv("BOT_SYNC_CHANNEL", "huaianbendi")
     SYNC_INTERVAL = _int_env("BOT_SYNC_INTERVAL", 4 * 60 * 60)
-    ANTI_BOT_ENABLED = True
+    ANTI_BOT_ENABLED = False  # 默认不自动踢 Bot，避免影响其他定时发消息 Bot
