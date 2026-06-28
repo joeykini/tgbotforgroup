@@ -156,7 +156,9 @@ def parse_teacher_block(text: str):
 def _format_teacher_line(t: dict) -> str:
     price_z = t["price"] // 100 if t["price"] else "?"
     contact = t.get("telegram") or t["url"]
-    return f"❤️ {t['name']} ({price_z}z) → {contact}"
+    name = (t.get("name") or "").replace("_", "\\_").replace("*", "\\*")
+    contact = str(contact).replace("_", "\\_").replace("*", "\\*")
+    return f"❤️ {name} ({price_z}z) → {contact}"
 
 
 def build_region_keyword_content(region: str, teachers: list) -> str:

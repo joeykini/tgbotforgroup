@@ -304,6 +304,7 @@ class Database:
                 "INSERT OR REPLACE INTO keyword_replies (keyword, reply_content, is_auto) VALUES (?, ?, ?)",
                 (keyword, reply_content, 1 if is_auto else 0),
             )
+            conn.commit()
 
     def replace_auto_keywords(self, keywords: dict):
         """keywords: {trigger: content}，全量替换自动关键词。"""

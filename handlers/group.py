@@ -1,11 +1,16 @@
 import asyncio
+import logging
 import time
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 
 from loader import dp, db, bot
 from config import DefaultConfig
+from channel_sync import PRICE_KEYWORDS, REGIONS
 from utils import delete_later, check_group_admin
+
+log = logging.getLogger(__name__)
+GROUP_CHAT_TYPES = [types.ChatType.GROUP, types.ChatType.SUPERGROUP]
 
 # ================= 群组管理逻辑 =================
 
@@ -19,6 +24,54 @@ async def _private_start_kb():
     return InlineKeyboardMarkup().add(
         InlineKeyboardButton("😘 立即启动", url=f"https://t.me/{bot_username}?start=v")
     )
+
+
+def _mala_fallback_text(bot_username: str) -> str:
+    regions = " · ".join(f"`{r}`" for r in REGIONS[:4]) + " …"
+    tiers = " · ".join(f"`{t}`" for t in PRICE_KEYWORDS)
+    return (
+        "🦢 **麻辣鹅 · 淮安榜资源**\n\n"
+        f"发送地区名查看在榜老师，例如：{regions}\n"
+        f"按价格档：{tiers}\n\n"
+        f"私聊 @{bot_username} 浏览完整按钮列表"
+    )
+
+
+async def _send_keyword_reply(message: types.Message) -> bool:
+    """统一关键词回复：含 Markdown 失败降级为纯文本。"""
+    if not message.text:
+        return False
+
+    reply_content = db.get_keyword_reply(message.text)
+    if not reply_content and "麻辣鹅" in message.text:
+        bot_username = (await bot.get_me()).username
+        reply_content = _mala_fallback_text(bot_username)
+
+    if not reply_content:
+        return False
+
+    kb = await _private_start_kb()
+    try:
+        sent_msg = await message.reply(
+            reply_content,
+            parse_mode="Markdown",
+            reply_markup=kb,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        log.warning("关键词 Markdown 回复失败，改用纯文本: %s", e)
+        try:
+            sent_msg = await message.reply(
+                reply_content,
+                reply_markup=kb,
+                disable_web_page_preview=True,
+            )
+        except Exception as e2:
+            log.error("关键词回复失败: %s", e2)
+            return False
+
+    await delete_later(sent_msg, 300)
+    return True
 
 
 # 1. 入群处理：默认不自动踢 Bot，仅欢迎真人
@@ -55,6 +108,7 @@ async def welcome_new_member(message: types.Message):
         text = (
             f"👋 {name_link} 欢迎加入！\n"
             f"发送 **麻辣鹅** 获取 [淮安榜](https://t.me/huaianbendi) 实时资源\n"
+            f"发送区县名（如 `清江浦`）按地区查看\n"
             f"或私聊 @{bot_username} 浏览完整列表"
         )
         kb = await _private_start_kb()
@@ -170,29 +224,7 @@ async def cmd_del(message: types.Message):
         await message.reply(f"❌ 删除失败: {e}")
 
 
-# 关键词「麻辣鹅」
-@dp.message_handler(text_contains="麻辣鹅", chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
-async def group_keyword_handler(message: types.Message):
-    if _is_other_bot(message):
-        return
-
-    db.add_group(message.chat.id, message.chat.title)
-    reply_content = db.get_keyword_reply(message.text)
-    if not reply_content:
-        bot_username = (await bot.get_me()).username
-        reply_content = (
-            "🦢 发送 **麻辣鹅** 获取淮安榜资源\n"
-            f"私聊 @{bot_username} 浏览完整列表"
-        )
-
-    kb = await _private_start_kb()
-    sent_msg = await message.reply(
-        reply_content, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True
-    )
-    await delete_later(sent_msg, 300)
-
-
-@dp.message_handler(lambda m: m.text and m.text.startswith("报告"), chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+@dp.message_handler(lambda m: m.text and m.text.startswith("报告"), chat_type=GROUP_CHAT_TYPES)
 async def group_report_trigger(message: types.Message):
     if _is_other_bot(message):
         return
@@ -218,7 +250,7 @@ async def group_report_trigger(message: types.Message):
     await delete_later(message, 60)
 
 
-@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), chat_type=GROUP_CHAT_TYPES)
 async def group_view_reports_trigger(message: types.Message):
     if _is_other_bot(message):
         return
@@ -243,9 +275,9 @@ async def group_view_reports_trigger(message: types.Message):
     await delete_later(message, 60)
 
 
-# 用户记录 & 防链接（跳过所有 Bot 消息，不影响定时广告 Bot）
-@dp.message_handler(content_types=types.ContentType.ANY, chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
-async def group_message_logger(message: types.Message):
+# 群文本：统计 + 防外链 + 关键词（麻辣鹅 / 地区 / 价格档 / 手动关键词）
+@dp.message_handler(content_types=types.ContentType.TEXT, chat_type=GROUP_CHAT_TYPES)
+async def group_text_handler(message: types.Message):
     if _is_other_bot(message):
         return
 
@@ -253,27 +285,40 @@ async def group_message_logger(message: types.Message):
     db.log_user(message.from_user.id, username, is_group=True)
     db.add_group(message.chat.id, message.chat.title)
 
-    if not db.get_setting("ANTI_LINK_ENABLED", DefaultConfig.ANTI_LINK_ENABLED):
-        pass
-    elif not await check_group_admin(message) and message.text:
-        text = message.text.lower()
-        if "http://" in text or "https://" in text or "t.me/" in text:
-            try:
-                await message.delete()
-                warning = await message.answer(
-                    f"⚠️ {message.from_user.get_mention(as_html=True)} 本群禁止发送外部链接！",
-                    parse_mode="HTML",
-                )
-                await asyncio.sleep(5)
-                await warning.delete()
-            except Exception:
+    if db.get_setting("ANTI_LINK_ENABLED", DefaultConfig.ANTI_LINK_ENABLED):
+        if not await check_group_admin(message):
+            text = message.text.lower()
+            if "http://" in text or "https://" in text or "t.me/" in text:
+                try:
+                    await message.delete()
+                    warning = await message.answer(
+                        f"⚠️ {message.from_user.get_mention(as_html=True)} 本群禁止发送外部链接！",
+                        parse_mode="HTML",
+                    )
+                    await asyncio.sleep(5)
+                    await warning.delete()
+                except Exception as e:
+                    log.debug("防外链处理失败: %s", e)
                 return
 
-    if message.text and "麻辣鹅" not in message.text:
-        reply_content = db.get_keyword_reply(message.text)
-        if reply_content:
-            kb = await _private_start_kb()
-            sent_msg = await message.reply(
-                reply_content, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True
-            )
-            await delete_later(sent_msg, 300)
+    await _send_keyword_reply(message)
+
+
+@dp.message_handler(
+    content_types=[
+        types.ContentType.PHOTO,
+        types.ContentType.VIDEO,
+        types.ContentType.DOCUMENT,
+        types.ContentType.STICKER,
+        types.ContentType.VOICE,
+        types.ContentType.AUDIO,
+    ],
+    chat_type=GROUP_CHAT_TYPES,
+)
+async def group_media_logger(message: types.Message):
+    """非文本消息仅记录，避免 ANY 处理器干扰其他逻辑。"""
+    if _is_other_bot(message):
+        return
+    username = message.from_user.username or message.from_user.full_name
+    db.log_user(message.from_user.id, username, is_group=True)
+    db.add_group(message.chat.id, message.chat.title)

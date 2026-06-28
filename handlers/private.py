@@ -460,8 +460,13 @@ async def start_report_msg(message: types.Message, state: FSMContext):
     )
     await message.answer(text, parse_mode="Markdown")
 
-@dp.message_handler(state=ReportStates.WAITING_FOR_REPORT_CONTENT, content_types=[types.ContentType.TEXT, types.ContentType.PHOTO, types.ContentType.VIDEO])
+@dp.message_handler(
+    state=ReportStates.WAITING_FOR_REPORT_CONTENT,
+    content_types=[types.ContentType.TEXT, types.ContentType.PHOTO, types.ContentType.VIDEO],
+    chat_type=types.ChatType.PRIVATE,
+)
 async def process_report_content(message: types.Message, state: FSMContext):
+    data = await state.get_data()
     mascot_name = data.get("report_mascot", "未知")
     
     content = message.text or message.caption or ""
@@ -531,7 +536,11 @@ async def vote_handler(call: types.CallbackQuery):
         else:
             await call.answer("您已点击过。")
 
-@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), state="*")
+@dp.message_handler(
+    lambda m: m.text and m.text.startswith("看报告"),
+    chat_type=types.ChatType.PRIVATE,
+    state="*",
+)
 async def view_reports_msg(message: types.Message, state: FSMContext = None):
     if state: await state.finish()
     parts = message.text.split(maxsplit=1)
