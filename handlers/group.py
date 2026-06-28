@@ -216,12 +216,29 @@ async def cmd_kickbot(message: types.Message):
         await message.reply(f"❌ 操作失败: {e}")
 
 
-@dp.message_handler(commands=['grptest'], chat_type=GROUP_CHAT_TYPES)
+@dp.message_handler(commands=['grptest'])
 async def cmd_grptest(message: types.Message):
-    """群内自检：确认 Bot 能收到群消息（Privacy Mode 关闭时普通词也会触发关键词）。"""
+    """群内自检：确认 Bot 能收到群消息。"""
+    if not _is_group_chat(message):
+        await message.reply("此命令请在群组里使用。")
+        return
+    me = await bot.get_me()
     await message.reply(
-        "✅ 本 Bot 能收到群内命令。\n"
-        "若发「麻辣鹅」仍无回复，请在 @BotFather → Bot Settings → Group Privacy → Turn off"
+        f"✅ 群消息已收到（Bot @{me.username} id={me.id}）。\n"
+        "请再发「麻辣鹅」测试关键词；多 Bot 同群时命令需写成 "
+        f"/grptest@{me.username}"
+    )
+
+
+@dp.my_chat_member_handler()
+async def on_bot_chat_member(event: types.ChatMemberUpdated):
+    me = await bot.get_me()
+    if event.new_chat_member.user.id != me.id:
+        return
+    status = event.new_chat_member.status
+    print(
+        f"[BOT] 成员状态变更 chat={event.chat.id} ({event.chat.title}) status={status}",
+        flush=True,
     )
 
 
@@ -238,8 +255,10 @@ async def cmd_del(message: types.Message):
         await message.reply(f"❌ 删除失败: {e}")
 
 
-@dp.message_handler(lambda m: m.text and m.text.startswith("报告"), chat_type=GROUP_CHAT_TYPES)
+@dp.message_handler(lambda m: m.text and m.text.startswith("报告"))
 async def group_report_trigger(message: types.Message):
+    if not _is_group_chat(message):
+        return
     if _is_other_bot(message):
         return
 
@@ -264,8 +283,10 @@ async def group_report_trigger(message: types.Message):
     await delete_later(message, 60)
 
 
-@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"), chat_type=GROUP_CHAT_TYPES)
+@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"))
 async def group_view_reports_trigger(message: types.Message):
+    if not _is_group_chat(message):
+        return
     if _is_other_bot(message):
         return
 
@@ -289,12 +310,13 @@ async def group_view_reports_trigger(message: types.Message):
     await delete_later(message, 60)
 
 
-# 群文本：统计 + 防外链 + 关键词（麻辣鹅 / 地区 / 价格档 / 手动关键词）
-@dp.message_handler(
-    lambda m: _is_group_chat(m) and bool(m.text) and not (m.text or "").startswith("/"),
-    content_types=types.ContentType.TEXT,
-)
+# 群文本：统计 + 防外链 + 关键词
+@dp.message_handler(content_types=types.ContentType.TEXT)
 async def group_text_handler(message: types.Message):
+    if not _is_group_chat(message):
+        return
+    if not message.text or message.text.startswith("/"):
+        return
     if _is_other_bot(message):
         return
     if not message.from_user:
@@ -333,10 +355,10 @@ async def group_text_handler(message: types.Message):
         types.ContentType.VOICE,
         types.ContentType.AUDIO,
     ],
-    chat_type=GROUP_CHAT_TYPES,
 )
 async def group_media_logger(message: types.Message):
-    """非文本消息仅记录，避免 ANY 处理器干扰其他逻辑。"""
+    if not _is_group_chat(message):
+        return
     if _is_other_bot(message):
         return
     username = message.from_user.username or message.from_user.full_name
