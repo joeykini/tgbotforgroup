@@ -63,7 +63,14 @@ async def is_bot_admin(user_id):
 async def check_group_admin(message: types.Message):
     """检查命令发送者是否为群管理员或 Bot 后台管理员。"""
     if message.chat.type == 'private':
+        if not message.from_user:
+            return False
         return await is_bot_admin(message.from_user.id)
+    # 匿名管理员以群名义发言
+    if not message.from_user and message.sender_chat and message.sender_chat.id == message.chat.id:
+        return True
+    if not message.from_user:
+        return False
     if await is_bot_admin(message.from_user.id):
         return True
     member = await bot.get_chat_member(message.chat.id, message.from_user.id)

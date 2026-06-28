@@ -11,9 +11,12 @@ class IncomingLogMiddleware(BaseMiddleware):
     async def on_pre_process_message(self, message: types.Message, data: dict):
         text = (message.text or message.caption or "")[:120]
         uid = message.from_user.id if message.from_user else "-"
+        via = ""
+        if not message.from_user and message.sender_chat:
+            via = f" sender_chat={message.sender_chat.id}"
         line = (
             f"[TG] chat={message.chat.id} ({message.chat.type}) "
-            f"user={uid} text={text!r}"
+            f"user={uid}{via} text={text!r}"
         )
         log.info(line)
         print(line, flush=True)

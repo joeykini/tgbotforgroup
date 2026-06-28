@@ -19,6 +19,33 @@ def _is_other_bot(message: types.Message) -> bool:
     return message.from_user and message.from_user.is_bot and message.from_user.id != bot.id
 
 
+def _is_anonymous_group_admin(message: types.Message) -> bool:
+    """Telegram 匿名管理员：消息以群名义发出，from_user 为空。"""
+    if message.from_user:
+        return False
+    sc = message.sender_chat
+    return bool(sc and sc.id == message.chat.id)
+
+
+def _should_ignore_group_message(message: types.Message) -> bool:
+    """忽略其他 Bot；忽略频道代发等非匿名管理员的 sender_chat 消息。"""
+    if _is_other_bot(message):
+        return True
+    if message.from_user:
+        return False
+    # 匿名管理员可继续处理；其他无 from_user 的消息跳过
+    return not _is_anonymous_group_admin(message)
+
+
+def _log_group_message(message: types.Message) -> None:
+    db.add_group(message.chat.id, message.chat.title)
+    if message.from_user:
+        username = message.from_user.username or message.from_user.full_name
+        db.log_user(message.from_user.id, username, is_group=True)
+    elif _is_anonymous_group_admin(message):
+        log.info("匿名管理员群消息 chat=%s text=%r", message.chat.id, (message.text or "")[:40])
+
+
 async def _private_start_kb():
     bot_username = (await bot.get_me()).username
     return InlineKeyboardMarkup().add(
@@ -317,15 +344,10 @@ async def group_text_handler(message: types.Message):
         return
     if not message.text or message.text.startswith("/"):
         return
-    if _is_other_bot(message):
-        return
-    if not message.from_user:
-        log.warning("群消息无 from_user，跳过 chat=%s", message.chat.id)
+    if _should_ignore_group_message(message):
         return
 
-    username = message.from_user.username or message.from_user.full_name
-    db.log_user(message.from_user.id, username, is_group=True)
-    db.add_group(message.chat.id, message.chat.title)
+    _log_group_message(message)
 
     if db.get_setting("ANTI_LINK_ENABLED", DefaultConfig.ANTI_LINK_ENABLED):
         if not await check_group_admin(message):
@@ -333,10 +355,11 @@ async def group_text_handler(message: types.Message):
             if "http://" in text or "https://" in text or "t.me/" in text:
                 try:
                     await message.delete()
-                    warning = await message.answer(
-                        f"⚠️ {message.from_user.get_mention(as_html=True)} 本群禁止发送外部链接！",
-                        parse_mode="HTML",
-                    )
+                    if message.from_user:
+                        warn_text = f"⚠️ {message.from_user.get_mention(as_html=True)} 本群禁止发送外部链接！"
+                    else:
+                        warn_text = "⚠️ 本群禁止发送外部链接！"
+                    warning = await message.answer(warn_text, parse_mode="HTML")
                     await asyncio.sleep(5)
                     await warning.delete()
                 except Exception as e:
@@ -359,8 +382,6 @@ async def group_text_handler(message: types.Message):
 async def group_media_logger(message: types.Message):
     if not _is_group_chat(message):
         return
-    if _is_other_bot(message):
+    if _should_ignore_group_message(message):
         return
-    username = message.from_user.username or message.from_user.full_name
-    db.log_user(message.from_user.id, username, is_group=True)
-    db.add_group(message.chat.id, message.chat.title)
+    _log_group_message(message)
