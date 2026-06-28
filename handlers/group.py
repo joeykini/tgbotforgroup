@@ -37,6 +37,10 @@ def _mala_fallback_text(bot_username: str) -> str:
     )
 
 
+def _is_group_chat(message: types.Message) -> bool:
+    return message.chat.type in (types.ChatType.GROUP, types.ChatType.SUPERGROUP, "group", "supergroup")
+
+
 async def _send_keyword_reply(message: types.Message) -> bool:
     """统一关键词回复：含 Markdown 失败降级为纯文本。"""
     if not message.text:
@@ -50,28 +54,29 @@ async def _send_keyword_reply(message: types.Message) -> bool:
     if not reply_content:
         return False
 
+    log.info("群关键词命中 chat=%s text=%r", message.chat.id, message.text[:40])
+
     kb = await _private_start_kb()
-    try:
-        sent_msg = await message.reply(
-            reply_content,
-            parse_mode="Markdown",
-            reply_markup=kb,
-            disable_web_page_preview=True,
-        )
-    except Exception as e:
-        log.warning("关键词 Markdown 回复失败，改用纯文本: %s", e)
+    attempts = [
+        {"parse_mode": "Markdown", "reply_markup": kb},
+        {"reply_markup": kb},
+        {},  # 纯文本，无按钮（最后兜底）
+    ]
+    last_err = None
+    for opts in attempts:
         try:
             sent_msg = await message.reply(
                 reply_content,
-                reply_markup=kb,
                 disable_web_page_preview=True,
+                **opts,
             )
-        except Exception as e2:
-            log.error("关键词回复失败: %s", e2)
-            return False
-
-    await delete_later(sent_msg, 300)
-    return True
+            await delete_later(sent_msg, 300)
+            return True
+        except Exception as e:
+            last_err = e
+            log.warning("关键词回复尝试失败 (%s): %s", opts or "plain", e)
+    log.error("关键词回复全部失败: %s", last_err)
+    return False
 
 
 # 1. 入群处理：默认不自动踢 Bot，仅欢迎真人
@@ -211,6 +216,15 @@ async def cmd_kickbot(message: types.Message):
         await message.reply(f"❌ 操作失败: {e}")
 
 
+@dp.message_handler(commands=['grptest'], chat_type=GROUP_CHAT_TYPES)
+async def cmd_grptest(message: types.Message):
+    """群内自检：确认 Bot 能收到群消息（Privacy Mode 关闭时普通词也会触发关键词）。"""
+    await message.reply(
+        "✅ 本 Bot 能收到群内命令。\n"
+        "若发「麻辣鹅」仍无回复，请在 @BotFather → Bot Settings → Group Privacy → Turn off"
+    )
+
+
 @dp.message_handler(commands=['del'], is_chat_admin=True)
 async def cmd_del(message: types.Message):
     """回复任意消息并删除（含其他 Bot 的定时广告）。"""
@@ -276,9 +290,15 @@ async def group_view_reports_trigger(message: types.Message):
 
 
 # 群文本：统计 + 防外链 + 关键词（麻辣鹅 / 地区 / 价格档 / 手动关键词）
-@dp.message_handler(content_types=types.ContentType.TEXT, chat_type=GROUP_CHAT_TYPES)
+@dp.message_handler(
+    lambda m: _is_group_chat(m) and bool(m.text) and not (m.text or "").startswith("/"),
+    content_types=types.ContentType.TEXT,
+)
 async def group_text_handler(message: types.Message):
     if _is_other_bot(message):
+        return
+    if not message.from_user:
+        log.warning("群消息无 from_user，跳过 chat=%s", message.chat.id)
         return
 
     username = message.from_user.username or message.from_user.full_name

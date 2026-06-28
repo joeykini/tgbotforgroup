@@ -332,9 +332,13 @@ class Database:
 
     def get_keyword_reply(self, text):
         """查找匹配的关键词回复（长关键词优先）。"""
+        raw = (text or "").strip()
+        if not raw:
+            return None
         keywords = sorted(self.get_all_keywords(), key=lambda k: len(k["keyword"]), reverse=True)
         for kw in keywords:
-            if kw["keyword"] in text:
+            key = (kw["keyword"] or "").strip()
+            if key and key in raw:
                 return kw["reply_content"]
         return None
 

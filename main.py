@@ -8,6 +8,7 @@ from channel_sync import sync_channel_to_db
 
 async def on_startup(dispatcher):
     print("Bot is starting...")
+    print("提示: 群内关键词需关闭 BotFather → Group Privacy，否则 Bot 收不到普通群消息")
     # 启动时立即同步一次，再进入定时轮询
     try:
         stats = sync_channel_to_db(db)
