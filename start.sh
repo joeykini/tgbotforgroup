@@ -25,5 +25,12 @@ if [ -z "$BOT_API_TOKEN" ] || [ -z "$BOT_ADMIN_ID" ]; then
     exit 1
 fi
 
-nohup $PYTHON_EXEC main.py > bot.log 2>&1 &
+nohup $PYTHON_EXEC main.py >> bot.log 2>&1 &
+sleep 2
+if ! pgrep -f main.py > /dev/null; then
+    echo "错误: Bot 启动后立即退出，请查看 bot.log："
+    tail -20 bot.log
+    exit 1
+fi
 echo "Bot 已在后台启动 (使用 $PYTHON_EXEC)，日志请查看 bot.log"
+tail -3 bot.log 2>/dev/null || true

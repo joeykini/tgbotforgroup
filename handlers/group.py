@@ -282,10 +282,8 @@ async def cmd_del(message: types.Message):
         await message.reply(f"❌ 删除失败: {e}")
 
 
-@dp.message_handler(lambda m: m.text and m.text.startswith("报告"))
+@dp.message_handler(lambda m: _is_group_chat(m) and m.text and m.text.startswith("报告"))
 async def group_report_trigger(message: types.Message):
-    if not _is_group_chat(message):
-        return
     if _is_other_bot(message):
         return
 
@@ -310,10 +308,8 @@ async def group_report_trigger(message: types.Message):
     await delete_later(message, 60)
 
 
-@dp.message_handler(lambda m: m.text and m.text.startswith("看报告"))
+@dp.message_handler(lambda m: _is_group_chat(m) and m.text and m.text.startswith("看报告"))
 async def group_view_reports_trigger(message: types.Message):
-    if not _is_group_chat(message):
-        return
     if _is_other_bot(message):
         return
 
@@ -337,13 +333,12 @@ async def group_view_reports_trigger(message: types.Message):
     await delete_later(message, 60)
 
 
-# 群文本：统计 + 防外链 + 关键词
-@dp.message_handler(content_types=types.ContentType.TEXT)
+# 群文本：统计 + 防外链 + 关键词（过滤条件写在装饰器里，避免吞掉私聊消息）
+@dp.message_handler(
+    lambda m: _is_group_chat(m) and bool(m.text) and not m.text.startswith("/"),
+    content_types=types.ContentType.TEXT,
+)
 async def group_text_handler(message: types.Message):
-    if not _is_group_chat(message):
-        return
-    if not message.text or message.text.startswith("/"):
-        return
     if _should_ignore_group_message(message):
         return
 
@@ -370,6 +365,7 @@ async def group_text_handler(message: types.Message):
 
 
 @dp.message_handler(
+    lambda m: _is_group_chat(m),
     content_types=[
         types.ContentType.PHOTO,
         types.ContentType.VIDEO,
@@ -380,8 +376,6 @@ async def group_text_handler(message: types.Message):
     ],
 )
 async def group_media_logger(message: types.Message):
-    if not _is_group_chat(message):
-        return
     if _should_ignore_group_message(message):
         return
     _log_group_message(message)
